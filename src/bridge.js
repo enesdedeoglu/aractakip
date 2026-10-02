@@ -76,7 +76,8 @@ export function createBridge({ onScan, needDetail, onChallenge, shared = () => (
 
   function next() {
     lastSeen = Date.now();
-    if (inflight && Date.now() - inflight.at < 75000) return null; // önceki sayfa bekleniyor
+    // Önceki sayfa bekleniyor (eski tabletlerde büyük sayfalar 1-2 dk sürebiliyor)
+    if (inflight && Date.now() - inflight.at < (iv.pageTimeout || 2.5) * MIN) return null;
     if (inflight) {
       log(`eklenti: ${inflight.task} zaman aşımı`);
       const src = inflight.task === 'crawl' ? crawl?.source : SOURCE_OF[inflight.task];
