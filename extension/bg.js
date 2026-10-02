@@ -30,32 +30,51 @@ async function ourTab() {
   return api.tabs.get(tabId).catch(() => null);
 }
 
+// Hataları ajanın kayıtlarına gönder (eklentinin konsolu tablette görünmüyor)
+function report(where, e) {
+  fetch(`${AGENT}/log`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ where, error: String(e && (e.message || e)) }) }).catch(() => {});
+}
+
 async function open(url) {
   let tab = await ourTab();
-  if (!tab) {
+  if (tab) { await api.tabs.update(tab.id, { url }); return; }
+  if (await isAndroid()) {
     // Android'de sabitlenmiş sekme yok; tablet bu iş için ayrıldığından sekme önde açılır
     // (arka plandaki sekmeleri Android askıya alabiliyor)
-    tab = (await isAndroid())
-      ? await api.tabs.create({ url, active: true })
-      : await api.tabs.create({ url, pinned: true, active: false });
-    await set({ tabId: tab.id });
+    try {
+      tab = await api.tabs.create({ url });
+    } catch (e) {
+      report('tabs.create', e);
+      [tab] = await api.tabs.query({ active: true, currentWindow: true });
+      if (!tab) throw e;
+      await api.tabs.update(tab.id, { url });
+    }
   } else {
-    await api.tabs.update(tab.id, { url });
+    tab = await api.tabs.create({ url, pinned: true, active: false });
   }
+  await set({ tabId: tab.id });
 }
 
 async function tick() {
   const st = await get();
   if (!st.enabled) { await badge('off', '#888'); return; }
+  let url;
   try {
-    const res = await fetch(`${AGENT}/next`);
-    const { url } = await res.json();
+    ({ url } = await (await fetch(`${AGENT}/next`)).json());
     await set({ agentOk: true, lastError: null });
-    if (url) { await open(url); await set({ lastUrl: url, lastNav: Date.now() }); }
     if (lastBadge === '×') await badge('', '#11804a');
   } catch {
     await set({ agentOk: false, lastError: 'Ajan çalışmıyor (bilgisayar/tablet)' });
     await badge('×', '#666');
+    return;
+  }
+  if (!url) return;
+  try {
+    await open(url);
+    await set({ lastUrl: url, lastNav: Date.now() });
+  } catch (e) {
+    await set({ lastError: `Sekme açılamadı: ${e.message || e}` });
+    report('open', e);
   }
 }
 

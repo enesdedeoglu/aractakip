@@ -77,6 +77,12 @@ function startServer() {
     const json = (code, obj) => res.writeHead(code, { 'Content-Type': 'application/json' }).end(JSON.stringify(obj));
     if (req.method === 'GET' && req.url === '/status') return json(200, { ok: true, ...bridge.status() });
     if (req.method === 'GET' && req.url === '/next') return json(200, { url: bridge.next() });
+    if (req.method === 'POST' && req.url === '/log') {
+      let b = '';
+      req.on('data', (c) => { b += c; if (b.length > 1e4) req.destroy(); });
+      req.on('end', () => { try { const m = JSON.parse(b); log(`eklenti hatası (${m.where}): ${m.error}`); } catch {} json(202, {}); });
+      return;
+    }
     if (req.method !== 'POST' || req.url !== '/page') { res.writeHead(404).end(); return; }
     let body = '';
     req.on('data', (c) => { body += c; if (body.length > 12e6) req.destroy(); });

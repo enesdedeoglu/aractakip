@@ -71,6 +71,8 @@ jobs:
           if [ -f data/db.json ]; then cp data/db.json _site/data/db.json; fi
           # Android Firefox'a tarayıcıdan kurulabilsin diye eklenti paketi de yayınlanır
           sh scripts/build-firefox.sh _site/aractakip-firefox.xpi
+          # Firefox otomatik güncelleme bildirimi
+          node -e "const v=require('./extension/manifest.firefox.json').version;console.log(JSON.stringify({addons:{'aractakip@enesdedeoglu':{updates:[{version:v,update_link:'https://enesdedeoglu.github.io/aractakip/aractakip-firefox.xpi'}]}}}))" > _site/updates.json
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:

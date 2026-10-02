@@ -1,7 +1,7 @@
 {
   "manifest_version": 2,
   "name": "Tesla İlan Takip",
-  "version": "2.1.0",
+  "version": "2.1.1",
   "description": "sahibinden, arabam.com ve Borusan Next Tesla ilanlarını tarayıcıdaki tek bir sekmede okuyup Tesla İlan Takip ajanına iletir.",
   "permissions": [
     "alarms", "tabs", "storage",
@@ -23,6 +23,7 @@
     "gecko": {
       "id": "aractakip@enesdedeoglu",
       "strict_min_version": "115.0",
+      "update_url": "https://enesdedeoglu.github.io/aractakip/updates.json",
       "data_collection_permissions": { "required": ["none"] }
     },
     "gecko_android": { "strict_min_version": "120.0" }
