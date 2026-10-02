@@ -8,6 +8,7 @@ TMP="$(mktemp -d)"
 cp "$DIR"/extension/bg.js "$DIR"/extension/content.js "$DIR"/extension/popup.html "$DIR"/extension/popup.js "$TMP"/
 cp "$DIR"/extension/manifest.firefox.json "$TMP"/manifest.json
 mkdir -p "$(dirname "$OUT")"
+OUT="$(cd "$(dirname "$OUT")" && pwd)/$(basename "$OUT")"   # zip başka klasörde çalıştığı için mutlak yol
 rm -f "$OUT"
 (cd "$TMP" && zip -q -r "$OUT" .)
 rm -rf "$TMP"
