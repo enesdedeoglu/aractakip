@@ -1,11 +1,12 @@
-// Yerel önizleme sunucusu: web/ arayüzünü ve data/db.json'u sunar.  npm run web
+// Geliştirme önizlemesi: web/ arayüzünü ve yerel data/db.json'u sunar.  npm run web
+// (Günlük kullanım için ajan arayüzü: http://127.0.0.1:5173)
 import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const PORT = Number(process.env.PORT || 5173);
+const PORT = Number(process.env.PORT || 5190); // ajan arayüzü 5173'te
 const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.css': 'text/css', '.json': 'application/json', '.svg': 'image/svg+xml' };
 
 http.createServer((req, res) => {

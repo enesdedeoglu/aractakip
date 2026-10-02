@@ -8,17 +8,26 @@ her ilana puan ve tavsiye verir. Yeni ilan, fiyat değişimi ve kalkan ilanları
 
 | Parça | Ne zaman çalışır | Kaynaklar |
 |---|---|---|
-| **Bulut** (GitHub Actions, 10 dk'da bir) | Bilgisayar kapalıyken de | arabam.com (Otokoç ve Borusan GitHub sunucularını engelliyor) |
 | **Yerel ajan** (arka planda, pencere açmaz) | Bilgisayar açıkken | Otokoç (doğrudan) + eklentiden gelen sayfalar |
 | **Chrome eklentisi** (kendi Chrome'unda tek sabitlenmiş sekme) | Chrome açıkken | sahibinden, arabam.com (km + hasar detayı), Borusan Next |
-| **Web arayüzü** (GitHub Pages) | Her zaman | Ortak veri: `data/db.json` |
+| **Web arayüzü** | Ajan çalışırken | <http://127.0.0.1:5173> |
+| **Bulut** (GitHub Actions) | **Kapalı** | Açmak için aşağıya bakın |
 
 Eklenti, ajandan sıradaki adresi alır ve kendi sabitlenmiş sekmesinde açar (arabam 3 dk, sahibinden ve Borusan 5 dk;
 saatte bir arabam, 6 saatte bir sahibinden tam tarama). Sayfalar arasında en az ~25 sn beklenir.
 Ayrı bir otomasyon penceresi açılmaz; sitelere senin normal tarayıcın gibi görünür.
 
-İki taraf da aynı `data/db.json` dosyasına GitHub API ile yazar (çakışmada yeniden birleştirir).
-Bir ilanı hangisi önce görürse o bildirir; aynı ilan iki kez bildirilmez.
+Veri, private GitHub reposundaki `data/db.json` dosyasında tutulur (geçmişiyle birlikte yedek).
+
+### Bulut taramasını tekrar açmak
+Bilgisayar kapalıyken de arabam.com taransın istenirse:
+```bash
+gh workflow enable "Tesla ilan taraması" --repo enesdedeoglu/aractakip
+```
+Not: Private repoda ücretsiz plan ayda 2000 Actions dakikası verir; 10 dakikalık tarama bunu aşar
+(`.github/workflows/scrape.yml` içindeki `cron` değerini `'*/30 * * * *'` yapın). Ücretsiz planda private
+repolar için GitHub Pages sitesi yayınlanamaz; arayüz yerelde kalır.
+
 
 ### Sitelerin koruma durumu (Ekim 2026)
 - **arabam.com:** liste araması düz HTTP ile açık (bulut). Detay sayfaları ve km'li "otomobil" görünümü yalnızca gerçek tarayıcıya açık → eklenti. Bulutta km ilan başlığından tahmin edilir.
@@ -76,7 +85,7 @@ Eklenti ilk dakikada sabitlenmiş bir sekme açar ve sırayla sayfaları okur. D
 npm run scan            # tek tarama (auto: saatte bir tam, arada hızlı)
 npm run scan:full       # tam tarama
 npm run agent           # ajanı ön planda çalıştır
-npm run web             # arayüz: http://localhost:5173 (yerel data/db.json)
+npm run web             # geliştirme önizlemesi: http://localhost:5190 (yerel data/db.json)
 STORE=fs npm run scan   # GitHub yerine yerel dosyaya yaz (geliştirme)
 ```
 

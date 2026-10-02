@@ -8,6 +8,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import http from 'node:http';
+import { fileURLToPath } from 'node:url';
 import { runCycle } from './run.js';
 import { loadSettings } from './settings.js';
 import { closeContext } from './browser.js';
@@ -81,6 +82,30 @@ function startServer() {
   server.listen(PORT, '127.0.0.1', () => log(`Eklenti uç noktası: http://127.0.0.1:${PORT}`));
 }
 
+// Web arayüzü: http://127.0.0.1:5173 (veri bellekteki güncel kayıttan sunulur)
+const UI_PORT = Number(process.env.UI_PORT || 5173);
+const WEB_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', 'web');
+const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8' };
+
+function startUi() {
+  const server = http.createServer((req, res) => {
+    const url = new URL(req.url, 'http://x').pathname;
+    if (url === '/data/db.json') {
+      if (!latestDb) { res.writeHead(503).end('veri henüz yüklenmedi'); return; }
+      res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }).end(JSON.stringify(latestDb));
+      return;
+    }
+    const file = path.join(WEB_DIR, url === '/' ? 'index.html' : path.normalize(url).replace(/^(\.\.[/\\])+/, ''));
+    if (!file.startsWith(WEB_DIR)) { res.writeHead(403).end(); return; }
+    fs.readFile(file, (err, buf) => {
+      if (err) { res.writeHead(404).end('bulunamadı'); return; }
+      res.writeHead(200, { 'Content-Type': TYPES[path.extname(file)] || 'application/octet-stream', 'Cache-Control': 'no-store' }).end(buf);
+    });
+  });
+  server.on('error', (e) => log('Arayüz sunucusu başlatılamadı:', e.message));
+  server.listen(UI_PORT, '127.0.0.1', () => log(`Arayüz: http://127.0.0.1:${UI_PORT}`));
+}
+
 const lastRun = {};
 
 async function main() {
@@ -92,12 +117,16 @@ async function main() {
   log('Tesla ilan takip ajanı başladı.');
   try { latestDb = (await openStore().load()).db; } catch (e) { log('Veri okunamadı:', e.message); }
   startServer();
+  startUi();
   for (;;) {
     const { intervalMinutes, sources, minIntervals = {} } = loadSettings().agent;
     // Her kaynağın kendi en kısa tarama aralığı olabilir
     const due = sources.filter((s) => Date.now() - (lastRun[s] || 0) >= (minIntervals[s] ?? intervalMinutes) * 60000 - 5000);
     if (due.length) {
-      await serial(() => runCycle({ mode: 'auto', sources: due, runner: 'local' }));
+      await serial(async () => {
+        const res = await runCycle({ mode: 'auto', sources: due, runner: 'local' });
+        if (res?.db) latestDb = res.db;
+      });
       due.forEach((s) => { lastRun[s] = Date.now(); });
     }
     await sleep(30_000);
