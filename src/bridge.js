@@ -52,7 +52,8 @@ export function createBridge({ onScan, needDetail, onChallenge, shared = () => (
     if (src) {
       if ((pausedUntil[src] || 0) > Date.now()) return false;
       const st = shared(src) || {};
-      if (Date.parse(st.blockedUntil) > Date.now()) return false;
+      // Engel o siteyi engelli gören cihaza özel (ör. Mac'teki tarayıcı oturumu); eski ortak kayıt da geçerli
+      if (Date.parse(st.blocks?.[runner]) > Date.now() || Date.parse(st.blockedUntil) > Date.now()) return false;
       const at = Date.parse(task.endsWith('Full') ? st.lastFull : st.lastOk);
       if (Number.isFinite(at) && Date.now() - at < span) { last[task] = at; return false; }
       // Sahiplik: siteyi başka bir cihaz düzenli tarıyorsa ona bırak; 3 tur taramazsa devral
@@ -66,8 +67,9 @@ export function createBridge({ onScan, needDetail, onChallenge, shared = () => (
   // Site "olağan dışı erişim" engeli koyduysa o siteyi saatlerce hiç deneme (3 → 6 → 12 → 24 saat)
   function block(source, reason) {
     const st = shared(source) || {};
-    const recent = Date.now() - Date.parse(st.lastBlockAt || 0) < 24 * 60 * MIN;
-    const count = recent ? (st.blockCount || 0) + 1 : 1;
+    const prev = st.blockInfo?.[runner] || {};
+    const recent = Date.now() - Date.parse(prev.at || 0) < 24 * 60 * MIN;
+    const count = recent ? (prev.count || 0) + 1 : 1;
     const hours = Math.min(24, 3 * 2 ** (count - 1));
     const until = new Date(Date.now() + hours * 60 * MIN).toISOString();
     log(`⛔ ${source}: ${reason} – ${hours} saat beklenecek`);

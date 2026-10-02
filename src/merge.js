@@ -26,13 +26,14 @@ export function mergeScans(db, scans, now = new Date()) {
     run.lastRun = t;
     run.ok = s.ok;
     run.error = s.ok ? null : s.error;
+    // Erişim engeli, onu gören cihaza (runner) özel tutulur
     if (s.blockedUntil) {
-      st.blockedUntil = s.blockedUntil;
-      st.blockCount = s.blockCount || 1;
-      st.lastBlockAt = t;
+      (st.blocks ||= {})[s.runner] = s.blockedUntil;
+      (st.blockInfo ||= {})[s.runner] = { at: t, count: s.blockCount || 1 };
     }
     if (!s.ok) continue;
     if (st.blockedUntil && Date.parse(st.blockedUntil) < now) st.blockedUntil = null;
+    if (st.blocks?.[s.runner]) delete st.blocks[s.runner]; // bu cihaz siteyi yeniden tarayabildi
     st.lastOk = t;
     st.lastOkRunner = s.runner;
     if (s.complete) st.lastFull = t;

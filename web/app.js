@@ -198,9 +198,12 @@
         .filter(([, r]) => !r.ok && Date.parse(r.lastRun) > okAt && Date.now() - Date.parse(r.lastRun) < 6 * 3600000)
         .map(([r, x]) => `${RUNNER_NAMES[r] || r}: ${x.error}`);
       if (errs.length && !st?.lastOk) cls = 'err';
-      if (Date.parse(st?.blockedUntil) > Date.now()) {
-        cls = 'stale';
-        info = `erişim engeli: ${new Date(st.blockedUntil).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })}'e kadar bekleniyor`;
+      const blocks = Object.entries(st?.blocks || {}).filter(([, u]) => Date.parse(u) > Date.now());
+      if (st?.blockedUntil && Date.parse(st.blockedUntil) > Date.now()) blocks.push(['hepsi', st.blockedUntil]);
+      if (blocks.length) {
+        const fmt = (u) => new Date(u).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
+        info += ` · engel: ${blocks.map(([r, u]) => `${RUNNER_NAMES[r] || r} ${fmt(u)}'e kadar bekliyor`).join(', ')}`;
+        if (blocks.length && cls !== 'ok') cls = 'stale';
       }
       if (s === 'sahibinden' && !st?.lastOk) info = 'Chrome eklentisi bekleniyor';
       return `<span class="src" title="${esc(errs.join('\n') || 'sorun yok')}"><i class="dot ${cls}"></i><b>${SOURCE_NAMES[s]}</b> ${count} ilan · ${esc(info)}${errs.length ? ' ⚠' : ''}</span>`;
