@@ -36,22 +36,20 @@ function report(where, e) {
 }
 
 async function open(url) {
+  if (await isAndroid()) {
+    // Android'de Firefox arka plandaki sekmeleri yüklemiyor ve sabitlenmiş sekme yok.
+    // Tablet bu işe ayrıldığından sayfa doğrudan öndeki sekmede açılır.
+    let [tab] = await api.tabs.query({ active: true, currentWindow: true });
+    if (!tab) tab = await api.tabs.create({ url });
+    else await api.tabs.update(tab.id, { url });
+    const { tabId } = await get();
+    if (tabId !== tab.id) report('info', `takip sekmesi: ${tab.id}`);
+    await set({ tabId: tab.id });
+    return;
+  }
   let tab = await ourTab();
   if (tab) { await api.tabs.update(tab.id, { url }); return; }
-  if (await isAndroid()) {
-    // Android'de sabitlenmiş sekme yok; tablet bu iş için ayrıldığından sekme önde açılır
-    // (arka plandaki sekmeleri Android askıya alabiliyor)
-    try {
-      tab = await api.tabs.create({ url });
-    } catch (e) {
-      report('tabs.create', e);
-      [tab] = await api.tabs.query({ active: true, currentWindow: true });
-      if (!tab) throw e;
-      await api.tabs.update(tab.id, { url });
-    }
-  } else {
-    tab = await api.tabs.create({ url, pinned: true, active: false });
-  }
+  tab = await api.tabs.create({ url, pinned: true, active: false });
   await set({ tabId: tab.id });
 }
 

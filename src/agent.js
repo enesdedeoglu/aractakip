@@ -80,7 +80,7 @@ function startServer() {
     if (req.method === 'POST' && req.url === '/log') {
       let b = '';
       req.on('data', (c) => { b += c; if (b.length > 1e4) req.destroy(); });
-      req.on('end', () => { try { const m = JSON.parse(b); log(`eklenti hatası (${m.where}): ${m.error}`); } catch {} json(202, {}); });
+      req.on('end', () => { try { const m = JSON.parse(b); log(m.where === 'info' ? `eklenti: ${m.error}` : `eklenti hatası (${m.where}): ${m.error}`); } catch {} json(202, {}); });
       return;
     }
     if (req.method !== 'POST' || req.url !== '/page') { res.writeHead(404).end(); return; }
