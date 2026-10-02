@@ -69,6 +69,8 @@ jobs:
           mkdir -p _site/data
           cp -r web/* _site/
           if [ -f data/db.json ]; then cp data/db.json _site/data/db.json; fi
+          # Android Firefox'a tarayıcıdan kurulabilsin diye eklenti paketi de yayınlanır
+          sh scripts/build-firefox.sh _site/aractakip-firefox.xpi
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
