@@ -161,7 +161,13 @@ async function sendTelegram(alert) {
 }
 
 export function notifyDesktop(title, message) {
-  if (process.platform !== 'darwin' || process.env.CI) return;
+  if (process.env.CI) return;
+  if (process.platform === 'android') {
+    // Termux:API kuruluysa Android bildirimi
+    execFile('termux-notification', ['--title', title, '--content', message, '--sound'], () => {});
+    return;
+  }
+  if (process.platform !== 'darwin') return;
   const script = `display notification ${JSON.stringify(message)} with title ${JSON.stringify(title)} sound name "Glass"`;
   execFile('osascript', ['-e', script], () => {});
 }

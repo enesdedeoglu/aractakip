@@ -19,6 +19,8 @@ import { log, sleep } from './util.js';
 
 const LOCK = path.join(os.homedir(), '.aractakip', 'agent.lock');
 const PORT = Number(process.env.AGENT_PORT || 5174);
+// Bu ajanın adı: Mac'te "local", Android tablette (Termux) "tablet"
+const RUNNER = process.env.ARACTAKIP_RUNNER || (process.platform === 'android' ? 'tablet' : 'local');
 
 function acquireLock() {
   fs.mkdirSync(path.dirname(LOCK), { recursive: true });
@@ -40,6 +42,13 @@ let lastChallengeNotice = 0;
 
 const bridge = createBridge({
   intervals: loadSettings().agent.extension,
+  // Başka bir ajan (ör. tablet) bu siteyi az önce taradıysa aynı turu tekrarlama
+  scannedByOther: (source, minutes, full = false) => {
+    const st = latestDb?.sources?.[source];
+    if (!st || st.lastOkRunner === RUNNER) return false;
+    const at = Date.parse(full ? st.lastFull : st.lastOk);
+    return Number.isFinite(at) && Date.now() - at < minutes * 60000;
+  },
   onChallenge: (url) => {
     log(`doğrulama ekranı: ${new URL(url).host} (Chrome'daki sabitlenmiş sekmede)`);
     if (Date.now() - lastChallengeNotice > 30 * 60000) {
@@ -54,7 +63,7 @@ const bridge = createBridge({
   onScan: (scan) => {
     log(`eklenti: ${scan.source} ${scan.mode} – ${scan.listings.length} ilan${scan.complete ? ' (tam)' : ''}`);
     return serial(async () => {
-      const res = await runCycle({ sources: [], runner: 'local', extraScans: [{ ...scan, ok: true, runner: 'local' }] });
+      const res = await runCycle({ sources: [], runner: RUNNER, extraScans: [{ ...scan, ok: true, runner: RUNNER }] });
       if (res?.db) latestDb = res.db;
     });
   },
@@ -64,7 +73,7 @@ function startServer() {
   const server = http.createServer((req, res) => {
     const origin = req.headers.origin || '';
     // Yalnızca tarayıcı eklentisinden gelen istekler
-    if (origin && !origin.startsWith('chrome-extension://')) { res.writeHead(403).end(); return; }
+    if (origin && !/^(chrome|moz)-extension:\/\//.test(origin)) { res.writeHead(403).end(); return; }
     const json = (code, obj) => res.writeHead(code, { 'Content-Type': 'application/json' }).end(JSON.stringify(obj));
     if (req.method === 'GET' && req.url === '/status') return json(200, { ok: true, ...bridge.status() });
     if (req.method === 'GET' && req.url === '/next') return json(200, { url: bridge.next() });
@@ -114,7 +123,7 @@ async function main() {
   process.on('SIGINT', stop);
   process.on('SIGTERM', stop);
 
-  log('Tesla ilan takip ajanı başladı.');
+  log(`Tesla ilan takip ajanı başladı (${RUNNER}).`);
   try { latestDb = (await openStore().load()).db; } catch (e) { log('Veri okunamadı:', e.message); }
   startServer();
   startUi();
@@ -124,7 +133,7 @@ async function main() {
     const due = sources.filter((s) => Date.now() - (lastRun[s] || 0) >= (minIntervals[s] ?? intervalMinutes) * 60000 - 5000);
     if (due.length) {
       await serial(async () => {
-        const res = await runCycle({ mode: 'auto', sources: due, runner: 'local' });
+        const res = await runCycle({ mode: 'auto', sources: due, runner: RUNNER });
         if (res?.db) latestDb = res.db;
       });
       due.forEach((s) => { lastRun[s] = Date.now(); });

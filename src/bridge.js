@@ -17,7 +17,7 @@ const BOR = 'https://borusannext.com/araba-al/tesla';
  * @param opts.needDetail () => string[]  – detay bilgisi eksik arabam ilan adresleri
  * @param opts.onChallenge (url) => void
  */
-export function createBridge({ onScan, needDetail, onChallenge, intervals = {} }) {
+export function createBridge({ onScan, needDetail, onChallenge, scannedByOther = () => false, intervals = {} }) {
   const iv = {
     sahibinden: 5, sahibindenFull: 360,
     arabam: 3, arabamFull: 60,
@@ -34,7 +34,13 @@ export function createBridge({ onScan, needDetail, onChallenge, intervals = {} }
   const failedDetail = new Set();
   const requested = new Map();
 
-  const due = (task, every) => Date.now() - (last[task] || 0) >= every * MIN;
+  // Görev zamanı geldi mi? Başka bir ajan aynı siteyi bu aralıkta taradıysa sayılmaz.
+  const SOURCE_OF = { arabam: 'arabam', arabamFull: 'arabam', sahibinden: 'sahibinden', sahibindenFull: 'sahibinden', borusan: 'borusan' };
+  const due = (task, every) => {
+    if (Date.now() - (last[task] || 0) < every * MIN) return false;
+    if (SOURCE_OF[task] && scannedByOther(SOURCE_OF[task], every, task.endsWith('Full'))) { last[task] = Date.now(); return false; }
+    return true;
+  };
 
   function next() {
     lastSeen = Date.now();

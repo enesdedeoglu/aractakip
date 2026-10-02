@@ -1,7 +1,9 @@
+// Chrome (chrome.*) ve Firefox (browser.*, Promise tabanlı) için ortak API
+const api = globalThis.browser ?? globalThis.chrome;
 const $ = (id) => document.getElementById(id);
 const ago = (t) => (t ? `${Math.max(0, Math.round((Date.now() - (typeof t === 'number' ? t : Date.parse(t))) / 60000))} dk önce` : '—');
 async function render() {
-  const s = { enabled: true, ...(await chrome.storage.local.get(null)) };
+  const s = { enabled: true, ...(await api.storage.local.get(null)) };
   $('enabled').checked = s.enabled;
   $('last').textContent = s.lastPage ? `${s.lastKind} · ${ago(s.lastPage)}` : '—';
   $('err').textContent = s.lastError || '';
@@ -14,9 +16,9 @@ async function render() {
     $('agent').textContent = 'çalışmıyor';
   }
 }
-$('enabled').onchange = (e) => chrome.storage.local.set({ enabled: e.target.checked });
+$('enabled').onchange = (e) => api.storage.local.set({ enabled: e.target.checked });
 $('tab').onclick = async () => {
-  const { tabId } = await chrome.storage.local.get('tabId');
-  if (tabId) chrome.tabs.update(tabId, { active: true }).catch(() => {});
+  const { tabId } = await api.storage.local.get('tabId');
+  if (tabId) api.tabs.update(tabId, { active: true }).catch(() => {});
 };
 render();

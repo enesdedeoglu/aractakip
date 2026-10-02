@@ -6,6 +6,7 @@
   const DAY = 86400000;
 
   const SOURCE_NAMES = { arabam: 'arabam.com', sahibinden: 'sahibinden', otokoc: 'Otokoç', borusan: 'Borusan Next' };
+  const RUNNER_NAMES = { cloud: 'bulut', local: 'bilgisayar', tablet: 'tablet' };
   const SELLER_NAMES = { sahibinden: 'Sahibinden', galeri: 'Galeri', kurumsal: 'Kurumsal', yetkili: 'Yetkili bayi' };
   const LABELS = ['Fırsat', 'İyi fiyat', 'Piyasa', 'Pahalı', 'Şüpheli', 'Veri az'];
   const LABEL_EMOJI = { 'Fırsat': '🔥', 'İyi fiyat': '👍', 'Piyasa': '⚖️', 'Pahalı': '💸', 'Şüpheli': '⚠️', 'Veri az': '·' };
@@ -189,13 +190,13 @@
       if (st?.lastOk) {
         const age = Date.now() - Date.parse(st.lastOk);
         cls = age < 30 * 60000 ? 'ok' : 'stale';
-        info = `${ago(st.lastOk)} (${st.lastOkRunner === 'cloud' ? 'bulut' : 'bilgisayar'})`;
+        info = `${ago(st.lastOk)} (${RUNNER_NAMES[st.lastOkRunner] || 'bilgisayar'})`;
       }
       // Yalnızca son başarılı taramadan sonra oluşan ve 6 saatten yeni hatalar
       const okAt = Date.parse(st?.lastOk || 0);
       const errs = Object.entries(st?.runs || {})
         .filter(([, r]) => !r.ok && Date.parse(r.lastRun) > okAt && Date.now() - Date.parse(r.lastRun) < 6 * 3600000)
-        .map(([r, x]) => `${r === 'cloud' ? 'bulut' : 'bilgisayar'}: ${x.error}`);
+        .map(([r, x]) => `${RUNNER_NAMES[r] || r}: ${x.error}`);
       if (errs.length && !st?.lastOk) cls = 'err';
       if (s === 'sahibinden' && !st?.lastOk) info = 'Chrome eklentisi bekleniyor';
       return `<span class="src" title="${esc(errs.join('\n') || 'sorun yok')}"><i class="dot ${cls}"></i><b>${SOURCE_NAMES[s]}</b> ${count} ilan · ${esc(info)}${errs.length ? ' ⚠' : ''}</span>`;

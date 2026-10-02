@@ -1,28 +1,46 @@
 // Arka plan: ajandan (127.0.0.1:5174) sıradaki adresi ister, kendi sabitlenmiş sekmesinde açar ve
 // içerik betiğinin okuduğu sayfayı ajana iletir. Hangi sitenin ne zaman açılacağına ajan karar verir.
+// Chrome (chrome.*) ve Firefox (browser.*, Promise tabanlı) için ortak API
+const api = globalThis.browser ?? globalThis.chrome;
 const AGENT = 'http://127.0.0.1:5174';
 
-const get = async () => ({ enabled: true, ...(await chrome.storage.local.get(null)) });
-const set = (o) => chrome.storage.local.set(o);
+const get = async () => ({ enabled: true, ...(await api.storage.local.get(null)) });
+const set = (o) => api.storage.local.set(o);
 
+// MV3'te action, Firefox MV2'de browserAction; Android'de rozet desteklenmeyebilir
+const action = api.action || api.browserAction;
+let lastBadge = '';
 async function badge(text, color) {
-  await chrome.action.setBadgeBackgroundColor({ color });
-  await chrome.action.setBadgeText({ text });
+  lastBadge = text;
+  try {
+    await action.setBadgeBackgroundColor({ color });
+    await action.setBadgeText({ text });
+  } catch { /* rozet desteklenmiyor */ }
+}
+
+let android = null;
+async function isAndroid() {
+  if (android == null) android = (await api.runtime.getPlatformInfo().catch(() => ({}))).os === 'android';
+  return android;
 }
 
 async function ourTab() {
   const { tabId } = await get();
   if (!tabId) return null;
-  return chrome.tabs.get(tabId).catch(() => null);
+  return api.tabs.get(tabId).catch(() => null);
 }
 
 async function open(url) {
   let tab = await ourTab();
   if (!tab) {
-    tab = await chrome.tabs.create({ url, pinned: true, active: false });
+    // Android'de sabitlenmiş sekme yok; tablet bu iş için ayrıldığından sekme önde açılır
+    // (arka plandaki sekmeleri Android askıya alabiliyor)
+    tab = (await isAndroid())
+      ? await api.tabs.create({ url, active: true })
+      : await api.tabs.create({ url, pinned: true, active: false });
     await set({ tabId: tab.id });
   } else {
-    await chrome.tabs.update(tab.id, { url });
+    await api.tabs.update(tab.id, { url });
   }
 }
 
@@ -34,14 +52,14 @@ async function tick() {
     const { url } = await res.json();
     await set({ agentOk: true, lastError: null });
     if (url) { await open(url); await set({ lastUrl: url, lastNav: Date.now() }); }
-    if ((await chrome.action.getBadgeText({})) === '×') await badge('', '#11804a');
+    if (lastBadge === '×') await badge('', '#11804a');
   } catch {
-    await set({ agentOk: false, lastError: 'Bilgisayardaki ajan çalışmıyor' });
+    await set({ agentOk: false, lastError: 'Ajan çalışmıyor (bilgisayar/tablet)' });
     await badge('×', '#666');
   }
 }
 
-chrome.runtime.onMessage.addListener((msg, sender) => {
+api.runtime.onMessage.addListener((msg, sender) => {
   if (msg.type === 'tick') { tick(); return; }
   (async () => {
     const { tabId } = await get();
@@ -54,11 +72,11 @@ chrome.runtime.onMessage.addListener((msg, sender) => {
   })();
 });
 
-chrome.alarms.onAlarm.addListener((a) => { if (a.name === 'tick') tick(); });
+api.alarms.onAlarm.addListener((a) => { if (a.name === 'tick') tick(); });
 // Servis çalışanı her uyandığında alarmı sıfırlamamak için yalnızca yoksa oluştur
 async function schedule() {
-  if (!(await chrome.alarms.get('tick'))) chrome.alarms.create('tick', { periodInMinutes: 0.5, delayInMinutes: 0.05 });
+  if (!(await api.alarms.get('tick'))) api.alarms.create('tick', { periodInMinutes: 0.5, delayInMinutes: 0.05 });
 }
-chrome.runtime.onInstalled.addListener(schedule);
-chrome.runtime.onStartup.addListener(schedule);
+api.runtime.onInstalled.addListener(schedule);
+api.runtime.onStartup.addListener(schedule);
 schedule();

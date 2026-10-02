@@ -1,7 +1,8 @@
 // Sayfa içeriğini okuyup arka plan betiğine iletir. Sayfada hiçbir şeye tıklamaz, form doldurmaz.
 // Yalnızca eklentinin kendi sabitlenmiş sekmesindeki sayfalar ajana gönderilir (arka plan kontrol eder).
 (() => {
-  const send = (msg) => chrome.runtime.sendMessage({ ...msg, url: location.href }).catch(() => {});
+  const api = globalThis.browser ?? globalThis.chrome;
+  const send = (msg) => api.runtime.sendMessage({ ...msg, url: location.href }).catch(() => {});
   const host = location.host;
   const isChallenge = () =>
     /\/cs\/|tloading/.test(location.pathname) ||
