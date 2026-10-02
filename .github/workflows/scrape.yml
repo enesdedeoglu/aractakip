@@ -1,0 +1,75 @@
+name: Tesla ilan taraması
+
+on:
+  schedule:
+    - cron: '*/10 * * * *'   # GitHub zamanlamayı birkaç dakika geciktirebilir
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'Tarama modu (auto / quick / full)'
+        default: auto
+  push:
+    branches: [main]
+    paths: ['data/db.json', 'web/**', '.github/workflows/scrape.yml']
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: scrape-${{ github.event_name == 'push' && 'deploy' || 'scan' }}
+  cancel-in-progress: false
+
+jobs:
+  scrape:
+    if: github.event_name != 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    outputs:
+      saved: ${{ steps.scan.outputs.saved }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - name: Tara
+        id: scan
+        run: node src/run.js --runner=cloud --mode=${{ github.event.inputs.mode || 'auto' }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ARACTAKIP_REPO: ${{ github.repository }}
+          SITE_URL: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/
+          MAIL_TO: ${{ secrets.MAIL_TO }}
+          SMTP_USER: ${{ secrets.SMTP_USER }}
+          SMTP_PASS: ${{ secrets.SMTP_PASS }}
+          SMTP_HOST: ${{ secrets.SMTP_HOST }}
+          SMTP_PORT: ${{ secrets.SMTP_PORT }}
+          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+
+  deploy:
+    needs: scrape
+    if: always() && (github.event_name == 'push' || github.event_name == 'workflow_dispatch' || needs.scrape.outputs.saved == 'true')
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.pages.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - name: Siteyi hazırla
+        run: |
+          mkdir -p _site/data
+          cp -r web/* _site/
+          if [ -f data/db.json ]; then cp data/db.json _site/data/db.json; fi
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+      - id: pages
+        uses: actions/deploy-pages@v4

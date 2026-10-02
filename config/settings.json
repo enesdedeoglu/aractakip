@@ -1,0 +1,21 @@
+{
+  "repo": "enesdedeoglu/aractakip",
+  "agent": {
+    "intervalMinutes": 3,
+    "fullScanEveryMinutes": 60,
+    "sources": ["arabam", "otokoc", "borusan"],
+    "minIntervals": { "borusan": 5, "otokoc": 5 }
+  },
+  "cloud": {
+    "sources": ["arabam", "otokoc", "borusan"]
+  },
+  "alerts": {
+    "models": [],
+    "maxPrice": null,
+    "maxKm": null,
+    "minYear": null,
+    "notifyPriceDrops": true,
+    "notifyRemoved": false,
+    "onlyLabels": []
+  }
+}

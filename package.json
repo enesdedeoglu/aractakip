@@ -1,0 +1,22 @@
+{
+  "name": "aractakip",
+  "version": "1.0.0",
+  "description": "Tesla ilan takip, kategorileme ve tavsiye sistemi (sahibinden, arabam.com, Otokoç, Borusan Next)",
+  "type": "module",
+  "private": true,
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "scan": "node src/run.js",
+    "scan:full": "node src/run.js --mode=full",
+    "agent": "node src/agent.js",
+    "web": "node scripts/serve.js",
+    "test": "node --test test/"
+  },
+  "dependencies": {
+    "cheerio": "^1.2.0",
+    "nodemailer": "^6.9.16"
+  },
+  "optionalDependencies": {
+    "playwright-core": "^1.55.0"
+  }
+}
