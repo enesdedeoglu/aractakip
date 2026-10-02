@@ -21,7 +21,7 @@ const BOR = 'https://borusannext.com/araba-al/tesla';
  * @param opts.shared (source) => { lastOk, lastFull, blockedUntil, blockCount, lastBlockAt } – ortak kayıttan
  *        (tüm cihazlar + ajan yeniden başlasa bile geçerli zamanlama)
  */
-export function createBridge({ onScan, needDetail, onChallenge, shared = () => ({}), intervals = {} }) {
+export function createBridge({ onScan, needDetail, onChallenge, shared = () => ({}), runner = 'local', intervals = {} }) {
   const iv = {
     sahibinden: 15, sahibindenFull: 1440,
     arabam: 5, arabamFull: 120,
@@ -53,6 +53,9 @@ export function createBridge({ onScan, needDetail, onChallenge, shared = () => (
       if (Date.parse(st.blockedUntil) > Date.now()) return false;
       const at = Date.parse(task.endsWith('Full') ? st.lastFull : st.lastOk);
       if (Number.isFinite(at) && Date.now() - at < span) { last[task] = at; return false; }
+      // Sahiplik: siteyi başka bir cihaz düzenli tarıyorsa ona bırak; 3 tur taramazsa devral
+      const okAt = Date.parse(st.lastOk);
+      if (st.lastOkRunner && st.lastOkRunner !== runner && Number.isFinite(okAt) && Date.now() - okAt < 3 * every * MIN) return false;
     }
     jitter[task] = 0.85 + Math.random() * 0.3;
     return true;
