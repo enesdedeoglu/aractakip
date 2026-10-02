@@ -24,6 +24,7 @@
         // Satırdaki ilk görsel bazen "çok fotoğraflı" simgesi olabiliyor; tümünü gönder, ajan seçsin
         images: [...tr.querySelectorAll('img, source')].flatMap((e) => [e.getAttribute('data-src'), e.getAttribute('src'), (e.getAttribute('srcset') || '').split(' ')[0]]).filter(Boolean),
         store: !!tr.querySelector('.store-icon'),
+        imgHtml: (tr.querySelector('td.searchResultsLargeThumbnail') || tr.querySelector('td'))?.innerHTML.replace(/\s+/g, ' ').slice(0, 1500),
         cells: [...tr.querySelectorAll('td')].map((td) => ({ cls: td.className, text: td.innerText.trim() })),
       };
     });

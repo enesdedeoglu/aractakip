@@ -1,7 +1,7 @@
 {
   "manifest_version": 2,
   "name": "Tesla İlan Takip",
-  "version": "2.1.6",
+  "version": "2.1.7",
   "description": "sahibinden, arabam.com ve Borusan Next Tesla ilanlarını tarayıcıdaki tek bir sekmede okuyup Tesla İlan Takip ajanına iletir.",
   "permissions": [
     "alarms", "tabs", "storage",
