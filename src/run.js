@@ -74,7 +74,14 @@ export async function runCycle({ mode = 'auto', sources, runner = 'local', dry =
 
     const heartbeatDue = Date.now() - Date.parse(db.savedAt || 0) > 55 * MIN;
     const dupChanged = (db.dupGroups ?? null) !== (work.dupGroups ?? null);
-    if (store.kind === 'github' && !hasChanges(changes) && before === after && !heartbeatDue && !dupChanged) {
+    // Cihazlar arası zamanlama ortak kayda dayanıyor: tam tarama bittiyse veya kayıttaki son tarama
+    // zamanı 10 dakikadan eskiyse, ilanlarda değişiklik olmasa da kaydet
+    const timingDue = scans.some((s) => s.ok && (
+      (s.complete && db.sources?.[s.source]?.lastFull !== work.sources[s.source]?.lastFull) ||
+      Date.now() - Date.parse(db.sources?.[s.source]?.lastOk || 0) > 10 * MIN ||
+      db.sources?.[s.source]?.lastOkRunner !== s.runner));
+    const blockChanged = scans.some((s) => s.blockedUntil);
+    if (store.kind === 'github' && !hasChanges(changes) && before === after && !heartbeatDue && !dupChanged && !timingDue && !blockChanged) {
       log('Kaydedilecek değişiklik yok.');
       return { db: work, changes };
     }
