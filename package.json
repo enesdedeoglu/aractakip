@@ -10,7 +10,7 @@
     "scan:full": "node src/run.js --mode=full",
     "agent": "node src/agent.js",
     "web": "node scripts/serve.js",
-    "test": "node --test test/"
+    "test": "node --test test/*.test.js"
   },
   "dependencies": {
     "cheerio": "^1.2.0",
