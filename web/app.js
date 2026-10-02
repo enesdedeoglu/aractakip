@@ -173,8 +173,13 @@
         cls = age < 30 * 60000 ? 'ok' : 'stale';
         info = `${ago(st.lastOk)} (${st.lastOkRunner === 'cloud' ? 'bulut' : 'bilgisayar'})`;
       }
-      const errs = Object.entries(st?.runs || {}).filter(([, r]) => !r.ok).map(([r, x]) => `${r === 'cloud' ? 'bulut' : 'bilgisayar'}: ${x.error}`);
-      if (!st?.lastOk && errs.length) cls = 'err';
+      // Yalnızca son başarılı taramadan sonra oluşan ve 6 saatten yeni hatalar
+      const okAt = Date.parse(st?.lastOk || 0);
+      const errs = Object.entries(st?.runs || {})
+        .filter(([, r]) => !r.ok && Date.parse(r.lastRun) > okAt && Date.now() - Date.parse(r.lastRun) < 6 * 3600000)
+        .map(([r, x]) => `${r === 'cloud' ? 'bulut' : 'bilgisayar'}: ${x.error}`);
+      if (errs.length && !st?.lastOk) cls = 'err';
+      if (s === 'sahibinden' && !st?.lastOk) info = 'Chrome eklentisi bekleniyor';
       return `<span class="src" title="${esc(errs.join('\n') || 'sorun yok')}"><i class="dot ${cls}"></i><b>${SOURCE_NAMES[s]}</b> ${count} ilan · ${esc(info)}${errs.length ? ' ⚠' : ''}</span>`;
     }).join('');
   }
