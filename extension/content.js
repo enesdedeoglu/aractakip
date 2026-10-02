@@ -22,7 +22,12 @@
         title: ((a && (a.getAttribute('title') || a.innerText)) || '').trim(),
         image: img ? img.getAttribute('data-src') || img.getAttribute('src') : null,
         // Satırdaki ilk görsel bazen "çok fotoğraflı" simgesi olabiliyor; tümünü gönder, ajan seçsin
-        images: [...tr.querySelectorAll('img, source')].flatMap((e) => [e.getAttribute('data-src'), e.getAttribute('src'), (e.getAttribute('srcset') || '').split(' ')[0]]).filter(Boolean),
+        images: [
+          ...[...tr.querySelectorAll('img, source')].flatMap((e) => [e.getAttribute('data-src'), e.getAttribute('src'), (e.getAttribute('srcset') || '').split(' ')[0]]),
+          // Vitrin ilanlarında fotoğraf <img> değil; arka plan stili veya data- özelliğinde olabiliyor
+          ...(tr.innerHTML.match(/https?:\/\/[^"'()\s]+?\/photos\/[^"'()\s]+?\.(?:jpe?g|webp|avif)/gi) || []),
+          ...[...tr.querySelectorAll('[style*="background"]')].map((e) => (getComputedStyle(e).backgroundImage.match(/url\(["']?([^"')]+)/) || [])[1]),
+        ].filter(Boolean),
         store: !!tr.querySelector('.store-icon'),
         imgHtml: (tr.querySelector('td.searchResultsLargeThumbnail') || tr.querySelector('td'))?.innerHTML.replace(/\s+/g, ' ').slice(0, 1500),
         cells: [...tr.querySelectorAll('td')].map((td) => ({ cls: td.className, text: td.innerText.trim() })),
