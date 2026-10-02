@@ -1,6 +1,7 @@
 // Tarama sonuçlarını veritabanına işler; yeni / fiyat değişimi / kalkan ilanları tespit eder.
 import { classify } from './classify.js';
 import { buildMarket, analyzeListing, marketSummary } from './analyze.js';
+import { findDuplicates, groupDamage } from './dedupe.js';
 
 const HOUR = 3600000;
 const KEEP_REMOVED_DAYS = 120;
@@ -120,9 +121,16 @@ function mergeDamage(a = {}, b = {}) {
 export function recompute(db) {
   const all = Object.values(db.listings);
   for (const l of all) l.c = classify(l);
-  const market = buildMarket(all);
-  for (const l of all) l.a = analyzeListing(l, market, all);
-  db.market = marketSummary(all);
+  // Farklı sitelerdeki aynı aracı eşleştir; piyasa modeli ve karşılaştırmalar her aracı bir kez saysın
+  db.dupGroups = findDuplicates(all);
+  const unique = all.filter((l) => !l.dup || l.dup.primary);
+  const market = buildMarket(unique);
+  for (const l of all) {
+    // Gruptaki diğer ilanlardan gelen hasar/ekspertiz bilgisi de değerlendirmeye katılsın
+    const view = l.dup ? { ...l, damage: groupDamage(l, db.listings) } : l;
+    l.a = analyzeListing(view, market, unique);
+  }
+  db.market = marketSummary(unique);
   db.model = market ? { n: market.n, at: new Date().toISOString() } : null;
 }
 

@@ -47,7 +47,7 @@
     shown: PAGE,
     f: Object.assign({
       model: null, q: '', sort: 'score', labels: [], gens: [], trims: [], sources: [], sellers: [],
-      yMin: '', yMax: '', pMax: '', kMax: '', onlyNew: false, noDamage: false, hideReserved: false, onlyFav: false, showRemoved: false,
+      yMin: '', yMax: '', pMax: '', kMax: '', onlyNew: false, noDamage: false, hideReserved: false, onlyFav: false, showRemoved: false, dedupe: true,
     }, store.get('filters', {})),
   };
 
@@ -100,7 +100,24 @@
   const isNew = (l) => Date.now() - Date.parse(l.firstSeen) < DAY;
   const hasDamage = (l) => (l.c?.warnings?.length || 0) > 0 || l.damage?.heavy || (l.damage?.tramer || 0) > 0 || l.damage?.painted || l.damage?.changed;
 
+  // Farklı sitelerdeki aynı araç tek kart: filtreye uyan üyelerden ana ilanı (yoksa ilk uyanı) tut
+  function collapse(list) {
+    if (!state.f.dedupe) return list;
+    const out = new Map();
+    for (const l of list) {
+      const id = l.dup?.id || l.key;
+      const cur = out.get(id);
+      if (!cur || (l.dup?.primary && !cur.dup?.primary)) out.set(id, l);
+    }
+    return [...out.values()];
+  }
+  const isPrimary = (l) => !l.dup || l.dup.primary;
+
   function baseFiltered(ignore = '') {
+    return collapse(rawFiltered(ignore));
+  }
+
+  function rawFiltered(ignore = '') {
     const f = state.f;
     const q = f.q.trim().toLocaleLowerCase('tr-TR');
     return state.listings.filter((l) => {
@@ -151,11 +168,12 @@
     const db = state.db;
     $('#updated').textContent = `Son güncelleme: ${ago(db.updatedAt)} · ${new Date(db.updatedAt).toLocaleString('tr-TR')}`;
     const active = state.listings.filter((l) => l.status === 'active');
-    const new24 = active.filter(isNew).length;
-    const deals = active.filter((l) => l.a?.label === 'Fırsat').length;
+    const cars = active.filter(isPrimary);
+    const new24 = cars.filter(isNew).length;
+    const deals = cars.filter((l) => l.a?.label === 'Fırsat').length;
     const drops7 = (db.events || []).filter((e) => e.type === 'price' && e.to < e.from && Date.now() - Date.parse(e.t) < 7 * DAY).length;
     const stats = [
-      [active.length, 'Aktif Tesla ilanı'],
+      [cars.length, `Aktif Tesla (${active.length - cars.length} çift ilan birleşti)`],
       [new24, 'Son 24 saatte yeni'],
       [deals, '🔥 Fırsat'],
       [drops7, 'Fiyatı düşen (7 gün)'],
@@ -248,6 +266,12 @@
       ...(a.reasons || []).slice(0, 3).map((r) => `<li class="pro">${esc(r)}</li>`),
       ...(a.cautions || []).slice(0, 3).map((r) => `<li class="con">${esc(r)}</li>`),
     ].join('');
+    const others = (l.dup?.members || []).filter((k) => k !== l.key).map((k) => state.db.listings[k]).filter(Boolean);
+    const otherHtml = others.length ? `<div class="others">Aynı araç: ${others.map((o) => {
+      const d = o.price - l.price;
+      const diff = d ? ` <small class="${d < 0 ? 'cheaper' : ''}">(${d < 0 ? '' : '+'}${tlShort(Math.abs(d)).replace(/^/, d < 0 ? '−' : '')})</small>` : ' <small>(aynı fiyat)</small>';
+      return `<a href="${esc(o.url)}" target="_blank" rel="noopener">${SOURCE_NAMES[o.source]} ${tl(o.price)}</a>${diff}`;
+    }).join(' · ')}</div>` : '';
     const fav = state.favs.has(l.key);
     const c = el('article', { class: `card ${l.status !== 'active' ? 'removed' : ''}`, 'data-key': l.key });
     c.innerHTML = `
@@ -255,7 +279,7 @@
         ${l.image ? `<img src="${esc(l.image)}" alt="" loading="lazy" referrerpolicy="no-referrer">` : '<span class="noimg">fotoğraf yok</span>'}
         <span class="badge ${labelCls}">${LABEL_EMOJI[a.label] || ''} ${esc(a.label || '')}${a.label !== 'Veri az' ? ` · ${a.score}` : ''}</span>
         ${l.status !== 'active' ? '<span class="ribbon">KALKTI</span>' : isNew(l) ? '<span class="ribbon">YENİ</span>' : ''}
-        <span class="src-tag">${SOURCE_NAMES[l.source]}</span>
+        <span class="src-tag">${SOURCE_NAMES[l.source]}${others.length ? ` +${others.length} site` : ''}</span>
       </a>
       <button class="fav ${fav ? 'on' : ''}" type="button" title="Favori" data-fav="${esc(l.key)}">${fav ? '★' : '☆'}</button>
       <div class="body">
@@ -264,6 +288,7 @@
         <div class="price-row"><span class="price">${tl(l.price)}</span>${devTxt}</div>
         ${a.expected && a.label !== 'Veri az' ? `<div class="expected">Beklenen ≈ ${tl(a.expected)}${a.compMedian ? ` · benzer ${a.comps} ilan medyanı ${tlShort(a.compMedian)}` : ''}</div>` : ''}
         <div class="meta">${meta}</div>
+        ${otherHtml}
         <div class="advice">${esc(a.advice || '')}</div>
         ${why ? `<ul class="why">${why}</ul>` : ''}
         ${sparkline(l.priceHistory)}
@@ -285,7 +310,7 @@
   const LABEL_COLORS = { 'Fırsat': 'var(--good)', 'İyi fiyat': 'var(--info)', 'Piyasa': 'var(--muted)', 'Pahalı': 'var(--warn)', 'Şüpheli': 'var(--bad)', 'Veri az': 'var(--border)' };
 
   function renderMarket() {
-    const active = state.listings.filter((l) => l.status === 'active' && l.price);
+    const active = state.listings.filter((l) => l.status === 'active' && l.price && isPrimary(l));
     const sel = $('#scatterModel');
     const models = MODEL_ORDER.filter((m) => active.some((l) => l.c.model === m));
     const current = sel.value || models[0];
@@ -322,7 +347,8 @@
       if (!l) return '';
       const name = `${l.c.model} ${l.c.trim} ${l.year || ''}`;
       let txt;
-      if (e.type === 'new') txt = `<a href="${esc(l.url)}" target="_blank" rel="noopener">${esc(name)}</a> eklendi · ${tl(l.priceHistory?.[0]?.p ?? l.price)} · ${SOURCE_NAMES[l.source]} · ${LABEL_EMOJI[l.a?.label] || ''} ${esc(l.a?.label)}`;
+      const also = (l.dup?.members || []).filter((k) => k !== l.key).map((k) => SOURCE_NAMES[state.db.listings[k]?.source]).filter(Boolean);
+      if (e.type === 'new') txt = `<a href="${esc(l.url)}" target="_blank" rel="noopener">${esc(name)}</a> eklendi · ${tl(l.priceHistory?.[0]?.p ?? l.price)} · ${SOURCE_NAMES[l.source]} · ${LABEL_EMOJI[l.a?.label] || ''} ${esc(l.a?.label)}${also.length ? ` · <small>aynı araç ${also.join(', ')}'da da var</small>` : ''}`;
       else if (e.type === 'price') txt = `<a href="${esc(l.url)}" target="_blank" rel="noopener">${esc(name)}</a> fiyatı ${tl(e.from)} → <b>${tl(e.to)}</b> (${e.to < e.from ? '▼' : '▲'} %${Math.abs(((e.to - e.from) / e.from) * 100).toFixed(1)}) · ${SOURCE_NAMES[l.source]}`;
       else if (e.type === 'removed') txt = `<a href="${esc(l.url)}" target="_blank" rel="noopener">${esc(name)}</a> ilanı kalktı (satıldı olabilir) · son fiyat ${tl(l.price)}`;
       else txt = `<a href="${esc(l.url)}" target="_blank" rel="noopener">${esc(name)}</a> tekrar yayında · ${tl(l.price)}`;
@@ -338,7 +364,7 @@
     const f = state.f;
     $('#q').value = f.q; $('#sort').value = f.sort;
     for (const k of ['yMin', 'yMax', 'pMax', 'kMax']) $('#' + k).value = f[k];
-    for (const k of ['onlyNew', 'noDamage', 'hideReserved', 'onlyFav', 'showRemoved']) $('#' + k).checked = f[k];
+    for (const k of ['onlyNew', 'noDamage', 'hideReserved', 'onlyFav', 'showRemoved', 'dedupe']) $('#' + k).checked = f[k];
   }
 
   document.addEventListener('click', (e) => {
@@ -369,9 +395,9 @@
   $('#q').addEventListener('input', (e) => { clearTimeout(qTimer); qTimer = setTimeout(() => { state.f.q = e.target.value; update(); }, 200); });
   $('#sort').addEventListener('change', (e) => { state.f.sort = e.target.value; update(); });
   for (const k of ['yMin', 'yMax', 'pMax', 'kMax']) $('#' + k).addEventListener('change', (e) => { state.f[k] = e.target.value; update(); });
-  for (const k of ['onlyNew', 'noDamage', 'hideReserved', 'onlyFav', 'showRemoved']) $('#' + k).addEventListener('change', (e) => { state.f[k] = e.target.checked; update(); });
+  for (const k of ['onlyNew', 'noDamage', 'hideReserved', 'onlyFav', 'showRemoved', 'dedupe']) $('#' + k).addEventListener('change', (e) => { state.f[k] = e.target.checked; update(); });
   $('#reset').addEventListener('click', () => {
-    Object.assign(state.f, { model: null, q: '', labels: [], gens: [], trims: [], sources: [], sellers: [], yMin: '', yMax: '', pMax: '', kMax: '', onlyNew: false, noDamage: false, hideReserved: false, onlyFav: false, showRemoved: false });
+    Object.assign(state.f, { model: null, q: '', labels: [], gens: [], trims: [], sources: [], sellers: [], yMin: '', yMax: '', pMax: '', kMax: '', onlyNew: false, noDamage: false, hideReserved: false, onlyFav: false, showRemoved: false, dedupe: true });
     syncInputs(); update();
   });
   $('#more').addEventListener('click', () => { state.shown += PAGE; renderGrid(); });

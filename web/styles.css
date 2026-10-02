@@ -200,6 +200,10 @@ input[type="search"], input[type="number"], select {
 .meta .tag { background: var(--info-bg); color: var(--info); }
 .meta .warn { background: var(--bad-bg); color: var(--bad); }
 .advice { font-size: 13px; }
+.others { font-size: 12px; color: var(--muted); }
+.others a { color: var(--info); text-decoration: none; font-weight: 600; }
+.others a:hover { text-decoration: underline; }
+.others small.cheaper { color: var(--good); font-weight: 700; }
 .why { font-size: 12px; margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 3px; }
 .why li::before { margin-right: 6px; font-weight: 700; }
 .why .pro { color: var(--good); }

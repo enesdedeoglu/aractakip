@@ -27,14 +27,16 @@ export function buildAlert(db, changes, alerts) {
   const get = (k) => db.listings[k];
   // Tam taramada ilk kez görülen eski ilanlar "yeni" sayılmasın: yayın tarihi son 3 gün olmalı
   const recent = (l) => !l.publishedAt || Date.now() - Date.parse(l.publishedAt) < 3 * 86400000;
-  const added = [...changes.added.map(get).filter((l) => l && recent(l)), ...changes.returned.map(get)]
+  // Zaten bilinen bir aracın başka sitede de ilana çıkması "yeni araç" değildir
+  const knownCar = (l) => l.dup && l.dup.members.some((k) => k !== l.key && db.listings[k] && Date.parse(db.listings[k].firstSeen) < Date.parse(l.firstSeen));
+  const added = [...changes.added.map(get).filter((l) => l && recent(l) && !knownCar(l)), ...changes.returned.map(get)]
     .filter((l) => passesAlertFilter(l, alerts))
     .sort((a, b) => (b.a?.score ?? 0) - (a.a?.score ?? 0));
   const prices = alerts.notifyPriceDrops
     ? changes.priceChanged.map((c) => ({ ...c, l: get(c.key) })).filter((c) => c.l && passesAlertFilter(c.l, alerts))
     : [];
   const removed = alerts.notifyRemoved ? changes.removed.map(get).filter((l) => passesAlertFilter(l, alerts)) : [];
-  return { added, prices, removed, empty: !added.length && !prices.length && !removed.length };
+  return { added, prices, removed, db, empty: !added.length && !prices.length && !removed.length };
 }
 
 function line(l) {
@@ -56,7 +58,15 @@ export function subjectOf(alert) {
   return `🚗 ${parts.join(' · ')}`;
 }
 
-function card(l, extra = '') {
+function otherSites(l, db) {
+  if (!l.dup || !db) return '';
+  const others = l.dup.members.filter((k) => k !== l.key).map((k) => db.listings[k]).filter(Boolean);
+  if (!others.length) return '';
+  return `<div style="margin-top:4px;font-size:12px;color:#555">Aynı araç: ${others.map((o) =>
+    `<a href="${esc(o.url)}" style="color:#2f6fdb">${esc(SOURCE_NAMES[o.source])} ${tl(o.price)}</a>`).join(' · ')}</div>`;
+}
+
+function card(l, extra = '', db = null) {
   const a = l.a || {};
   const color = { 'Fırsat': '#0a7d32', 'İyi fiyat': '#2f6fdb', 'Piyasa': '#666', 'Pahalı': '#b35900', 'Şüpheli': '#c0182b' }[a.label] || '#666';
   return `
@@ -72,6 +82,7 @@ function card(l, extra = '') {
         <div style="margin-top:6px;color:#333">${esc(a.advice)}</div>
         ${(a.cautions || []).length ? `<div style="margin-top:4px;color:#b35900;font-size:12px">⚠ ${a.cautions.map(esc).join('<br>⚠ ')}</div>` : ''}
         ${(a.reasons || []).length ? `<div style="margin-top:4px;color:#0a7d32;font-size:12px">✓ ${a.reasons.slice(0, 4).map(esc).join('<br>✓ ')}</div>` : ''}
+        ${otherSites(l, db)}
       </td></tr></table>
   </td></tr>`;
 }
@@ -81,8 +92,8 @@ export function emailHtml(alert) {
   const sec = (title, rows) => rows ? `<h3 style="font-family:Arial,sans-serif;margin:20px 0 4px">${title}</h3><table role="presentation" width="100%" cellpadding="0" cellspacing="0">${rows}</table>` : '';
   return `<div style="max-width:640px;margin:auto">
     <h2 style="font-family:Arial,sans-serif">Tesla İlan Takip</h2>
-    ${sec(`Yeni ilanlar (${alert.added.length})`, alert.added.map((l) => card(l)).join(''))}
-    ${sec(`Fiyat değişimleri (${alert.prices.length})`, alert.prices.map((p) => card(p.l, `<span style="font-size:13px;color:${p.to < p.from ? '#0a7d32' : '#c0182b'}">(${p.to < p.from ? '▼' : '▲'} ${tl(Math.abs(p.to - p.from))}, önce ${tl(p.from)})</span>`)).join(''))}
+    ${sec(`Yeni ilanlar (${alert.added.length})`, alert.added.map((l) => card(l, '', alert.db)).join(''))}
+    ${sec(`Fiyat değişimleri (${alert.prices.length})`, alert.prices.map((p) => card(p.l, `<span style="font-size:13px;color:${p.to < p.from ? '#0a7d32' : '#c0182b'}">(${p.to < p.from ? '▼' : '▲'} ${tl(Math.abs(p.to - p.from))}, önce ${tl(p.from)})</span>`, alert.db)).join(''))}
     ${sec(`Kalkan ilanlar (${alert.removed.length})`, alert.removed.map((l) => card(l, '<span style="font-size:13px;color:#666">(satıldı / kaldırıldı)</span>')).join(''))}
     ${site ? `<p style="font-family:Arial,sans-serif"><a href="${esc(site)}">Tüm ilanları ve piyasa analizini aç →</a></p>` : ''}
     <p style="font-family:Arial,sans-serif;color:#999;font-size:11px">Fiyat tahminleri ilan verilerine dayanan istatistiksel bir modeldir; yatırım tavsiyesi değildir. Ekspertiz yaptırmadan araç almayın.</p>

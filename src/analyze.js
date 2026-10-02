@@ -115,7 +115,7 @@ export function analyzeListing(l, market, all) {
     deviation = l.price / expected - 1;
   }
   // Benzer ilanlar: aynı segment, ±1 yıl
-  const comps = all.filter((o) => o !== l && o.status === 'active' && o.price && o.c.segment === l.c.segment && o.year && l.year && Math.abs(o.year - l.year) <= 1);
+  const comps = all.filter((o) => o.key !== l.key && !(l.dup && l.dup.members.includes(o.key)) && o.status === 'active' && o.price && o.c.segment === l.c.segment && o.year && l.year && Math.abs(o.year - l.year) <= 1);
   const compMedian = median(comps.map((o) => o.price));
 
   let score = 50;

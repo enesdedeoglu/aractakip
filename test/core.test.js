@@ -50,3 +50,26 @@ test('birleştirme: yeni, fiyat değişimi, kalkan ilan', () => {
   c = mergeScans(db, [{ source: 'otokoc', ok: true, complete: true, listings: [], runner: 'cloud' }], new Date('2026-10-01T09:00:00Z'));
   assert.deepEqual(c.removed, ['otokoc:1']);
 });
+
+import { findDuplicates } from '../src/dedupe.js';
+
+test('farklı sitelerdeki aynı araç eşleşir, farklı şehir/aynı site eşleşmez', () => {
+  const mk = (key, source, o = {}) => {
+    const l = { key, source, status: 'active', title: 'DC GARAJ TESLA MODEL Y 2024 32.000 KM HATASIZ', modelRaw: 'Tesla Model Y RWD', year: 2024, km: 32150, price: 2539750, city: 'İstanbul', firstSeen: '2026-10-01T00:00:00Z', ...o };
+    l.c = classify(l);
+    return l;
+  };
+  const a = mk('arabam:1', 'arabam');
+  const b = mk('sahibinden:1', 'sahibinden');
+  const c = mk('sahibinden:2', 'sahibinden', { city: 'Ankara' });           // farklı şehir
+  const d = mk('arabam:2', 'arabam');                                        // aynı site
+  const e = mk('borusan:1', 'borusan', { title: 'Tesla Model Y', km: 20000, price: 2600000 }); // farklı araç
+  findDuplicates([a, b, c, d, e]);
+  assert.ok(a.dup || d.dup, 'arabam ilanlarından biri sahibinden ile eşleşmeli');
+  const g = (a.dup || d.dup).members;
+  assert.ok(g.includes('sahibinden:1'));
+  assert.equal(g.filter((k) => k.startsWith('arabam')).length, 1, 'grupta her siteden en fazla bir ilan');
+  assert.equal(c.dup, undefined);
+  assert.equal(e.dup, undefined);
+  assert.equal([a, b, d].filter((l) => l.dup?.primary).length, 1);
+});
