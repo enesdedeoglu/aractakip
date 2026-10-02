@@ -74,6 +74,13 @@ function startServer() {
     const origin = req.headers.origin || '';
     // Yalnızca tarayıcı eklentisinden gelen istekler
     if (origin && !/^(chrome|moz)-extension:\/\//.test(origin)) { res.writeHead(403).end(); return; }
+    // Eklentinin izni tarayıcıca tanınmazsa (ör. Firefox) CORS ile de çalışsın
+    if (origin) {
+      res.setHeader('Access-Control-Allow-Origin', origin);
+      res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+      res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+    }
+    if (req.method === 'OPTIONS') { res.writeHead(204).end(); return; }
     const json = (code, obj) => res.writeHead(code, { 'Content-Type': 'application/json' }).end(JSON.stringify(obj));
     if (req.method === 'GET' && req.url === '/status') return json(200, { ok: true, ...bridge.status() });
     if (req.method === 'GET' && req.url === '/next') return json(200, { url: bridge.next() });
