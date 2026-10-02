@@ -47,6 +47,12 @@
   const read = readers[host];
   if (!read) return;
 
+  // Sitenin "olağan dışı erişim" engel sayfası: beklemeden bildir, ajan o siteyi saatlerce bekletir
+  if (/olağan\s*dışı\s*erişim|olağandışı erişim|unusual (traffic|access)/i.test((document.body?.innerText || '').slice(0, 2000))) {
+    send({ challenge: true, blocked: true });
+    return;
+  }
+
   let tries = 0;
   const attempt = () => {
     if (isChallenge()) {

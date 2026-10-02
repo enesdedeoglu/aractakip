@@ -26,7 +26,13 @@ export function mergeScans(db, scans, now = new Date()) {
     run.lastRun = t;
     run.ok = s.ok;
     run.error = s.ok ? null : s.error;
+    if (s.blockedUntil) {
+      st.blockedUntil = s.blockedUntil;
+      st.blockCount = s.blockCount || 1;
+      st.lastBlockAt = t;
+    }
     if (!s.ok) continue;
+    if (st.blockedUntil && Date.parse(st.blockedUntil) < now) st.blockedUntil = null;
     st.lastOk = t;
     st.lastOkRunner = s.runner;
     if (s.complete) st.lastFull = t;

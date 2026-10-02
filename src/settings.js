@@ -16,7 +16,7 @@ const DEFAULTS = {
     sources: ['otokoc'],
     minIntervals: {},
     // Eklenti sekmesinin sayfa açma aralıkları (dakika)
-    extension: { sahibinden: 5, sahibindenFull: 360, arabam: 3, arabamFull: 60, borusan: 5, gap: 0.4 },
+    extension: { sahibinden: 15, sahibindenFull: 1440, arabam: 5, arabamFull: 120, borusan: 10, gap: 0.75, crawlGap: 1 },
   },
   // Otokoç ve Borusan GitHub sunucularını engelliyor; Otokoç ara sıra açık olabilir diye denenir
   cloud: { sources: ['arabam', 'otokoc'] },

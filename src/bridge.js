@@ -17,12 +17,17 @@ const BOR = 'https://borusannext.com/araba-al/tesla';
  * @param opts.needDetail () => string[]  – detay bilgisi eksik arabam ilan adresleri
  * @param opts.onChallenge (url) => void
  */
-export function createBridge({ onScan, needDetail, onChallenge, scannedByOther = () => false, intervals = {} }) {
+/**
+ * @param opts.shared (source) => { lastOk, lastFull, blockedUntil, blockCount, lastBlockAt } – ortak kayıttan
+ *        (tüm cihazlar + ajan yeniden başlasa bile geçerli zamanlama)
+ */
+export function createBridge({ onScan, needDetail, onChallenge, shared = () => ({}), intervals = {} }) {
   const iv = {
-    sahibinden: 5, sahibindenFull: 360,
-    arabam: 3, arabamFull: 60,
-    borusan: 5,
-    gap: 0.4, // iki sayfa açılışı arasındaki en kısa süre (dk)
+    sahibinden: 15, sahibindenFull: 1440,
+    arabam: 5, arabamFull: 120,
+    borusan: 10,
+    gap: 0.75,     // iki sayfa açılışı arasındaki en kısa süre (dk)
+    crawlGap: 1,   // tam taramada sayfalar arası en kısa süre (dk)
     ...intervals,
   };
   const last = {};          // görev adı -> son çalışma zamanı
@@ -34,24 +39,55 @@ export function createBridge({ onScan, needDetail, onChallenge, scannedByOther =
   const failedDetail = new Set();
   const requested = new Map();
 
-  // Görev zamanı geldi mi? Başka bir ajan aynı siteyi bu aralıkta taradıysa sayılmaz.
+  // Görev zamanı geldi mi? Ortak kayıttaki son tarama (hangi cihaz yaptıysa) ve engel süresi de dikkate alınır.
+  // Aralıklar ±%15 oynatılır ki istekler saat gibi düzenli olmasın.
   const SOURCE_OF = { arabam: 'arabam', arabamFull: 'arabam', sahibinden: 'sahibinden', sahibindenFull: 'sahibinden', borusan: 'borusan' };
+  const jitter = {};
+  const timeouts = {};
   const due = (task, every) => {
-    if (Date.now() - (last[task] || 0) < every * MIN) return false;
-    if (SOURCE_OF[task] && scannedByOther(SOURCE_OF[task], every, task.endsWith('Full'))) { last[task] = Date.now(); return false; }
+    const span = every * MIN * (jitter[task] ??= 0.85 + Math.random() * 0.3);
+    if (Date.now() - (last[task] || 0) < span) return false;
+    const src = SOURCE_OF[task];
+    if (src) {
+      const st = shared(src) || {};
+      if (Date.parse(st.blockedUntil) > Date.now()) return false;
+      const at = Date.parse(task.endsWith('Full') ? st.lastFull : st.lastOk);
+      if (Number.isFinite(at) && Date.now() - at < span) { last[task] = at; return false; }
+    }
+    jitter[task] = 0.85 + Math.random() * 0.3;
     return true;
   };
+
+  // Site "olağan dışı erişim" engeli koyduysa o siteyi saatlerce hiç deneme (3 → 6 → 12 → 24 saat)
+  function block(source, reason) {
+    const st = shared(source) || {};
+    const recent = Date.now() - Date.parse(st.lastBlockAt || 0) < 24 * 60 * MIN;
+    const count = recent ? (st.blockCount || 0) + 1 : 1;
+    const hours = Math.min(24, 3 * 2 ** (count - 1));
+    const until = new Date(Date.now() + hours * 60 * MIN).toISOString();
+    log(`⛔ ${source}: ${reason} – ${hours} saat beklenecek`);
+    onChallenge?.(`https://${source}`, { blocked: true, hours });
+    if (crawl?.source === source) crawl = null;
+    return onScan({ source, ok: false, error: `${reason} (${hours} saat bekleniyor)`, listings: [], complete: false, mode: 'blocked', blockedUntil: until, blockCount: count });
+  }
 
   function next() {
     lastSeen = Date.now();
     if (inflight && Date.now() - inflight.at < 75000) return null; // önceki sayfa bekleniyor
     if (inflight) {
       log(`eklenti: ${inflight.task} zaman aşımı`);
+      const src = inflight.task === 'crawl' ? crawl?.source : SOURCE_OF[inflight.task];
       if (crawl && inflight.task === 'crawl') { last[crawl.source] = Date.now(); crawl = null; }
       else last[inflight.task] = Date.now();
       inflight = null;
+      // Sayfa üst üste cevap vermiyorsa (ör. engel sayfası) o siteyi beklet
+      if (src) {
+        timeouts[src] = (timeouts[src] || 0) + 1;
+        if (timeouts[src] >= 2) { timeouts[src] = 0; block(src, 'üst üste yanıt alınamadı (olası erişim engeli)'); }
+      }
     }
     if (Date.now() - lastNav < iv.gap * MIN) return null;
+    if (crawl?.nextUrl && Date.now() - lastNav < iv.crawlGap * MIN) return null;
 
     let pick = null;
     if (crawl && crawl.nextUrl) pick = { task: 'crawl', url: crawl.nextUrl };
@@ -76,9 +112,16 @@ export function createBridge({ onScan, needDetail, onChallenge, scannedByOther =
     return pick.url;
   }
 
-  async function page({ url, kind, html, nextData, heads, rows, total, challenge }) {
+  async function page({ url, kind, html, nextData, heads, rows, total, challenge, blocked }) {
     lastSeen = Date.now();
     const task = inflight?.task;
+    const hostSrc = /sahibinden/.test(url) ? 'sahibinden' : /arabam/.test(url) ? 'arabam' : /borusan/.test(url) ? 'borusan' : null;
+    if (hostSrc) timeouts[hostSrc] = 0;
+    if (blocked && hostSrc) {
+      if (task) last[task] = Date.now();
+      inflight = null;
+      return block(hostSrc, 'site otomatik erişim engeli gösterdi');
+    }
     const done = () => { if (task && task !== 'crawl') last[task] = Date.now(); inflight = null; };
     if (challenge) {
       onChallenge?.(url);

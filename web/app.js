@@ -198,6 +198,10 @@
         .filter(([, r]) => !r.ok && Date.parse(r.lastRun) > okAt && Date.now() - Date.parse(r.lastRun) < 6 * 3600000)
         .map(([r, x]) => `${RUNNER_NAMES[r] || r}: ${x.error}`);
       if (errs.length && !st?.lastOk) cls = 'err';
+      if (Date.parse(st?.blockedUntil) > Date.now()) {
+        cls = 'stale';
+        info = `erişim engeli: ${new Date(st.blockedUntil).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })}'e kadar bekleniyor`;
+      }
       if (s === 'sahibinden' && !st?.lastOk) info = 'Chrome eklentisi bekleniyor';
       return `<span class="src" title="${esc(errs.join('\n') || 'sorun yok')}"><i class="dot ${cls}"></i><b>${SOURCE_NAMES[s]}</b> ${count} ilan · ${esc(info)}${errs.length ? ' ⚠' : ''}</span>`;
     }).join('');

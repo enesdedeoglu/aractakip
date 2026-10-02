@@ -42,18 +42,18 @@ let lastChallengeNotice = 0;
 
 const bridge = createBridge({
   intervals: loadSettings().agent.extension,
-  // Başka bir ajan (ör. tablet) bu siteyi az önce taradıysa aynı turu tekrarlama
-  scannedByOther: (source, minutes, full = false) => {
-    const st = latestDb?.sources?.[source];
-    if (!st || st.lastOkRunner === RUNNER) return false;
-    const at = Date.parse(full ? st.lastFull : st.lastOk);
-    return Number.isFinite(at) && Date.now() - at < minutes * 60000;
-  },
-  onChallenge: (url) => {
-    log(`doğrulama ekranı: ${new URL(url).host} (Chrome'daki sabitlenmiş sekmede)`);
+  // Ortak kayıttaki zamanlama: başka cihaz taradıysa veya ajan yeniden başladıysa tekrar etme
+  shared: (source) => latestDb?.sources?.[source] || {},
+  onChallenge: (url, info = {}) => {
+    const host = new URL(url).host.replace('www.', '');
+    if (info.blocked) {
+      notifyDesktop(`${host} erişimi engelledi`, `Siteye ${info.hours} saat boyunca hiç girilmeyecek; sonra otomatik devam edilir.`);
+      return;
+    }
+    log(`doğrulama ekranı: ${host} (tarayıcıdaki takip sekmesinde)`);
     if (Date.now() - lastChallengeNotice > 30 * 60000) {
       lastChallengeNotice = Date.now();
-      notifyDesktop(`${new URL(url).host.replace('www.', '')} doğrulama istiyor`, 'Chrome\'daki sabitlenmiş Tesla İlan Takip sekmesinde doğrulamayı tamamlayın.');
+      notifyDesktop(`${host} doğrulama istiyor`, 'Tarayıcıdaki Tesla İlan Takip sekmesinde doğrulamayı tamamlayın.');
     }
   },
   needDetail: () => Object.values(latestDb?.listings || {})
@@ -63,7 +63,7 @@ const bridge = createBridge({
   onScan: (scan) => {
     log(`eklenti: ${scan.source} ${scan.mode} – ${scan.listings.length} ilan${scan.complete ? ' (tam)' : ''}`);
     return serial(async () => {
-      const res = await runCycle({ sources: [], runner: RUNNER, extraScans: [{ ...scan, ok: true, runner: RUNNER }] });
+      const res = await runCycle({ sources: [], runner: RUNNER, extraScans: [{ ok: true, ...scan, runner: RUNNER }] });
       if (res?.db) latestDb = res.db;
     });
   },
