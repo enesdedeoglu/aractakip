@@ -73,7 +73,8 @@ export async function runCycle({ mode = 'auto', sources, runner = 'local', dry =
     if (dry) return { db: work, changes };
 
     const heartbeatDue = Date.now() - Date.parse(db.savedAt || 0) > 55 * MIN;
-    if (store.kind === 'github' && !hasChanges(changes) && before === after && !heartbeatDue) {
+    const dupChanged = (db.dupGroups ?? null) !== (work.dupGroups ?? null);
+    if (store.kind === 'github' && !hasChanges(changes) && before === after && !heartbeatDue && !dupChanged) {
       log('Kaydedilecek değişiklik yok.');
       return { db: work, changes };
     }
