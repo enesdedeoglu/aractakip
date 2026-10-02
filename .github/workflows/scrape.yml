@@ -1,8 +1,10 @@
 name: Tesla ilan taraması
 
 on:
-  schedule:
-    - cron: '*/10 * * * *'   # GitHub zamanlamayı birkaç dakika geciktirebilir
+  # Bulut taraması şimdilik kapalı (veriler bilgisayardaki ajandan geliyor).
+  # Tekrar açmak için aşağıdaki iki satırın başındaki # işaretlerini kaldırın:
+  # schedule:
+  #   - cron: '*/10 * * * *'
   workflow_dispatch:
     inputs:
       mode:

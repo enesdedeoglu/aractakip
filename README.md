@@ -10,24 +10,22 @@ her ilana puan ve tavsiye verir. Yeni ilan, fiyat değişimi ve kalkan ilanları
 |---|---|---|
 | **Yerel ajan** (arka planda, pencere açmaz) | Bilgisayar açıkken | Otokoç (doğrudan) + eklentiden gelen sayfalar |
 | **Chrome eklentisi** (kendi Chrome'unda tek sabitlenmiş sekme) | Chrome açıkken | sahibinden, arabam.com (km + hasar detayı), Borusan Next |
-| **Web arayüzü** | Ajan çalışırken | <http://127.0.0.1:5173> |
-| **Bulut** (GitHub Actions) | **Kapalı** | Açmak için aşağıya bakın |
+| **Web arayüzü** (GitHub Pages) | Her zaman | <https://enesdedeoglu.github.io/aractakip/> (yerelde: <http://127.0.0.1:5173>) |
+| **Bulut taraması** (GitHub Actions) | **Kapalı** | Açmak için aşağıya bakın |
 
 Eklenti, ajandan sıradaki adresi alır ve kendi sabitlenmiş sekmesinde açar (arabam 3 dk, sahibinden ve Borusan 5 dk;
 saatte bir arabam, 6 saatte bir sahibinden tam tarama). Sayfalar arasında en az ~25 sn beklenir.
 Ayrı bir otomasyon penceresi açılmaz; sitelere senin normal tarayıcın gibi görünür.
 
-Veri, private GitHub reposundaki `data/db.json` dosyasında tutulur (geçmişiyle birlikte yedek).
+Ajan veriyi GitHub'daki `data/db.json` dosyasına yazar; her yazımda GitHub Actions siteyi (Pages) yeniden yayınlar.
+Mail bildirimleri, değişikliği bulan ajan tarafından bilgisayardan gönderilir.
 
 ### Bulut taramasını tekrar açmak
-Bilgisayar kapalıyken de arabam.com taransın istenirse:
+Bilgisayar kapalıyken de arabam.com taransın istenirse `.github/workflows/scrape.yml` içindeki
+`schedule` ve `cron` satırlarının başındaki `#` işaretlerini kaldırıp gönderin. Elle tek seferlik tarama:
 ```bash
-gh workflow enable "Tesla ilan taraması" --repo enesdedeoglu/aractakip
+gh workflow run scrape.yml --repo enesdedeoglu/aractakip -f mode=full
 ```
-Not: Private repoda ücretsiz plan ayda 2000 Actions dakikası verir; 10 dakikalık tarama bunu aşar
-(`.github/workflows/scrape.yml` içindeki `cron` değerini `'*/30 * * * *'` yapın). Ücretsiz planda private
-repolar için GitHub Pages sitesi yayınlanamaz; arayüz yerelde kalır.
-
 
 ### Sitelerin koruma durumu (Ekim 2026)
 - **arabam.com:** liste araması düz HTTP ile açık (bulut). Detay sayfaları ve km'li "otomobil" görünümü yalnızca gerçek tarayıcıya açık → eklenti. Bulutta km ilan başlığından tahmin edilir.
