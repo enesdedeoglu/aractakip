@@ -1,7 +1,7 @@
 {
   "manifest_version": 2,
   "name": "Tesla İlan Takip",
-  "version": "2.1.4",
+  "version": "2.1.5",
   "description": "sahibinden, arabam.com ve Borusan Next Tesla ilanlarını tarayıcıdaki tek bir sekmede okuyup Tesla İlan Takip ajanına iletir.",
   "permissions": [
     "alarms", "tabs", "storage",
@@ -15,7 +15,7 @@
     {
       "matches": ["https://www.sahibinden.com/*", "https://www.arabam.com/*", "https://borusannext.com/*"],
       "js": ["content.js"],
-      "run_at": "document_idle"
+      "run_at": "document_end"
     }
   ],
   "browser_action": { "default_popup": "popup.html", "default_title": "Tesla İlan Takip" },

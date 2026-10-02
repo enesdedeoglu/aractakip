@@ -44,11 +44,13 @@ export function createBridge({ onScan, needDetail, onChallenge, shared = () => (
   const SOURCE_OF = { arabam: 'arabam', arabamFull: 'arabam', sahibinden: 'sahibinden', sahibindenFull: 'sahibinden', borusan: 'borusan' };
   const jitter = {};
   const timeouts = {};
+  const pausedUntil = {};
   const due = (task, every) => {
     const span = every * MIN * (jitter[task] ??= 0.85 + Math.random() * 0.3);
     if (Date.now() - (last[task] || 0) < span) return false;
     const src = SOURCE_OF[task];
     if (src) {
+      if ((pausedUntil[src] || 0) > Date.now()) return false;
       const st = shared(src) || {};
       if (Date.parse(st.blockedUntil) > Date.now()) return false;
       const at = Date.parse(task.endsWith('Full') ? st.lastFull : st.lastOk);
@@ -84,10 +86,15 @@ export function createBridge({ onScan, needDetail, onChallenge, shared = () => (
       if (crawl && inflight.task === 'crawl') { last[crawl.source] = Date.now(); crawl = null; }
       else last[inflight.task] = Date.now();
       inflight = null;
-      // Sayfa üst üste cevap vermiyorsa (ör. engel sayfası) o siteyi beklet
+      // Sayfa üst üste cevap vermiyorsa bu cihazda o siteyi 1 saat beklet (yalnızca yerel: sebep cihazın
+      // yavaşlığı da olabilir; ortak engel yalnızca sitenin engel sayfası görülünce konur)
       if (src) {
         timeouts[src] = (timeouts[src] || 0) + 1;
-        if (timeouts[src] >= 2) { timeouts[src] = 0; block(src, 'üst üste yanıt alınamadı (olası erişim engeli)'); }
+        if (timeouts[src] >= 2) {
+          timeouts[src] = 0;
+          pausedUntil[src] = Date.now() + 60 * MIN;
+          log(`⏸ ${src}: üst üste yanıt alınamadı – bu cihazda 1 saat beklenecek`);
+        }
       }
     }
     if (Date.now() - lastNav < iv.gap * MIN) return null;

@@ -31,9 +31,18 @@
   }
 
   function arabam() {
-    if (!document.querySelector('tr.listing-list-item, .product-properties, #classifiedDetail') && !/DamageInfo/.test(document.documentElement.innerHTML)) return false;
-    send({ kind: 'arabam', html: document.documentElement.outerHTML });
-    return true;
+    // Sayfanın tamamı (~1,3 MB) yerine yalnızca gereken parçalar: ilan satırları veya detay verisi
+    const rows = [...document.querySelectorAll('tr.listing-list-item')];
+    if (rows.length) {
+      send({ kind: 'arabam', html: `<table><tbody>${rows.map((r) => r.outerHTML).join('')}</tbody></table>` });
+      return true;
+    }
+    const scripts = [...document.scripts].map((sc) => sc.textContent).filter((t) => /DamageInfo|"Key":"Marka"/.test(t));
+    if (scripts.length) {
+      send({ kind: 'arabam', html: scripts.join('\n') });
+      return true;
+    }
+    return false;
   }
 
   function borusan() {
