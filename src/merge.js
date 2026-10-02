@@ -15,7 +15,7 @@ export const keyOf = (l) => `${l.source}:${l.sourceId}`;
  */
 export function mergeScans(db, scans, now = new Date()) {
   const t = now.toISOString();
-  const changes = { added: [], priceChanged: [], removed: [], returned: [] };
+  const changes = { added: [], priceChanged: [], removed: [], returned: [], updated: 0 };
 
   for (const s of scans) {
     // Durum, çalıştıran (cloud / local) bazında tutulur; böylece bulutta engellenen bir kaynak
@@ -52,6 +52,8 @@ export function mergeScans(db, scans, now = new Date()) {
       // Var olan ilan: alanları güncelle (detaydan gelen bilgileri koru)
       const keep = { firstSeen: prev.firstSeen, priceHistory: prev.priceHistory || [], damage: prev.damage, specs: prev.specs, detailAt: prev.detailAt, color: prev.color };
       const wasRemoved = prev.status === 'removed';
+      // Detay (hasar/boya) ilk kez geldiyse veya eksik km dolduysa kaydetmeye değer
+      if ((raw.detailAt && raw.detailAt !== prev.detailAt) || (prev.km == null && raw.km != null)) changes.updated++;
       // Boş gelen alanlar (ör. tarih sıralı listede km yok) eski değeri ezmesin
       const rawClean = Object.fromEntries(Object.entries(raw).filter(([, v]) => v != null));
       Object.assign(prev, rawClean, {
@@ -130,7 +132,8 @@ export function summarizeChanges(c) {
   if (c.priceChanged.length) parts.push(`${c.priceChanged.length} fiyat değişimi`);
   if (c.removed.length) parts.push(`${c.removed.length} kalktı`);
   if (c.returned.length) parts.push(`${c.returned.length} geri geldi`);
+  if (c.updated) parts.push(`${c.updated} ilan bilgisi güncellendi`);
   return parts.join(', ');
 }
 
-export const hasChanges = (c) => c.added.length + c.priceChanged.length + c.removed.length + c.returned.length > 0;
+export const hasChanges = (c) => c.added.length + c.priceChanged.length + c.removed.length + c.returned.length + (c.updated || 0) > 0;

@@ -1,23 +1,24 @@
 <!doctype html>
 <meta charset="utf-8">
 <style>
-  body { font: 13px -apple-system, Segoe UI, sans-serif; width: 260px; margin: 12px; color: #15171c; }
+  body { font: 13px -apple-system, Segoe UI, sans-serif; width: 270px; margin: 12px; color: #15171c; }
   h1 { font-size: 14px; margin: 0 0 8px; }
-  .row { display: flex; justify-content: space-between; margin: 4px 0; color: #555; }
-  .row b { color: #15171c; }
+  .row { display: flex; justify-content: space-between; margin: 4px 0; color: #555; gap: 8px; }
+  .row b { color: #15171c; text-align: right; }
   button { width: 100%; margin-top: 8px; padding: 6px; border-radius: 8px; border: 1px solid #ccc; background: #fff; cursor: pointer; }
-  label { display: flex; gap: 6px; align-items: center; margin-top: 8px; }
+  label { display: flex; gap: 6px; align-items: center; margin-bottom: 8px; }
   .err { color: #c01b2c; margin-top: 6px; }
+  .hint { color: #777; font-size: 11px; margin-top: 8px; }
 </style>
 <h1>Tesla İlan Takip</h1>
-<label><input type="checkbox" id="enabled"> sahibinden'i otomatik takip et</label>
-<label>Her <input type="number" id="interval" min="2" max="60" style="width:48px"> dakikada bir yenile</label>
-<div class="row"><span>Son okuma</span><b id="last">—</b></div>
-<div class="row"><span>Sayfadaki ilan</span><b id="count">—</b></div>
-<div class="row"><span>Toplam Tesla</span><b id="total">—</b></div>
-<div class="row"><span>Son tam tarama</span><b id="full">—</b></div>
+<label><input type="checkbox" id="enabled"> Otomatik takip açık</label>
 <div class="row"><span>Ajan</span><b id="agent">—</b></div>
+<div class="row"><span>Son sayfa</span><b id="last">—</b></div>
+<div class="row"><span>Süren tam tarama</span><b id="crawl">—</b></div>
+<div class="row"><span>arabam</span><b id="arabam">—</b></div>
+<div class="row"><span>sahibinden</span><b id="sahibinden">—</b></div>
+<div class="row"><span>Borusan</span><b id="borusan">—</b></div>
 <div class="err" id="err"></div>
-<button id="scan">Şimdi yenile</button>
-<button id="fullBtn">Tam tarama başlat (~5 dk)</button>
+<button id="tab">Takip sekmesini göster</button>
+<div class="hint">Sabitlenmiş sekme birkaç dakikada bir sayfa değiştirir. Doğrulama çıkarsa (rozet "!") o sekmede tamamlayın.</div>
 <script src="popup.js"></script>

@@ -1,13 +1,22 @@
 {
   "manifest_version": 3,
-  "name": "Tesla İlan Takip – sahibinden yardımcısı",
-  "version": "1.0.0",
-  "description": "Açık sahibinden Tesla sayfalarındaki ilanları bilgisayardaki Tesla İlan Takip ajanına gönderir.",
+  "name": "Tesla İlan Takip",
+  "version": "2.0.0",
+  "description": "sahibinden, arabam.com ve Borusan Next Tesla ilanlarını kendi Chrome'unuzdaki tek bir sabitlenmiş sekmede okuyup bilgisayardaki Tesla İlan Takip ajanına iletir.",
   "permissions": ["alarms", "tabs", "storage"],
-  "host_permissions": ["https://www.sahibinden.com/*", "http://127.0.0.1:5174/*"],
+  "host_permissions": [
+    "https://www.sahibinden.com/*",
+    "https://www.arabam.com/*",
+    "https://borusannext.com/*",
+    "http://127.0.0.1:5174/*"
+  ],
   "background": { "service_worker": "bg.js" },
   "content_scripts": [
-    { "matches": ["https://www.sahibinden.com/*"], "js": ["content.js"], "run_at": "document_idle" }
+    {
+      "matches": ["https://www.sahibinden.com/*", "https://www.arabam.com/*", "https://borusannext.com/*"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
   ],
   "action": { "default_popup": "popup.html", "default_title": "Tesla İlan Takip" }
 }

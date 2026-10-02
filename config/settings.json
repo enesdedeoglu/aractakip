@@ -1,10 +1,10 @@
 {
   "repo": "enesdedeoglu/aractakip",
   "agent": {
-    "intervalMinutes": 3,
+    "intervalMinutes": 5,
     "fullScanEveryMinutes": 60,
-    "sources": ["arabam", "otokoc", "borusan"],
-    "minIntervals": { "borusan": 5, "otokoc": 5 }
+    "sources": ["otokoc"],
+    "extension": { "sahibinden": 5, "sahibindenFull": 360, "arabam": 3, "arabamFull": 60, "borusan": 5, "gap": 0.4 }
   },
   "cloud": {
     "sources": ["arabam", "otokoc"]

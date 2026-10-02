@@ -9,17 +9,21 @@ her ilana puan ve tavsiye verir. Yeni ilan, fiyat değişimi ve kalkan ilanları
 | Parça | Ne zaman çalışır | Kaynaklar |
 |---|---|---|
 | **Bulut** (GitHub Actions, 10 dk'da bir) | Bilgisayar kapalıyken de | arabam.com (Otokoç ve Borusan GitHub sunucularını engelliyor) |
-| **Yerel ajan** (gerçek Chrome, 3–6 dk'da bir) | Bilgisayar açıkken | sahibinden, arabam.com (km + hasar detayı), Otokoç, Borusan Next |
+| **Yerel ajan** (arka planda, pencere açmaz) | Bilgisayar açıkken | Otokoç (doğrudan) + eklentiden gelen sayfalar |
+| **Chrome eklentisi** (kendi Chrome'unda tek sabitlenmiş sekme) | Chrome açıkken | sahibinden, arabam.com (km + hasar detayı), Borusan Next |
 | **Web arayüzü** (GitHub Pages) | Her zaman | Ortak veri: `data/db.json` |
+
+Eklenti, ajandan sıradaki adresi alır ve kendi sabitlenmiş sekmesinde açar (arabam 3 dk, sahibinden ve Borusan 5 dk;
+saatte bir arabam, 6 saatte bir sahibinden tam tarama). Sayfalar arasında en az ~25 sn beklenir.
+Ayrı bir otomasyon penceresi açılmaz; sitelere senin normal tarayıcın gibi görünür.
 
 İki taraf da aynı `data/db.json` dosyasına GitHub API ile yazar (çakışmada yeniden birleştirir).
 Bir ilanı hangisi önce görürse o bildirir; aynı ilan iki kez bildirilmez.
 
 ### Sitelerin koruma durumu (Ekim 2026)
-- **arabam.com:** liste araması düz HTTP ile açık. Detay sayfaları ve km'li "otomobil" görünümü yalnızca tarayıcıya açık; bunlar yerel ajanda Chrome ile çekilir. Bulutta km ilan başlığından tahmin edilir.
-- **Otokoç:** düz HTTP ile açık (şu an Tesla ilanı yok; gelince yakalanır).
-- **Borusan Next:** Cloudflare korumalı; gerçek Chrome otomatik geçiyor (yerel ajan). Bulutta engellenirse yerel ajan tarar.
-- **sahibinden:** "Tarayıcınızı kontrol ediyoruz – Devam Et" doğrulaması var. Program bunu **atlatmaya çalışmaz**: açılan Chrome penceresinde doğrulamayı sen tamamlarsın, oturum çerezi kalıcı profilde (`~/.aractakip/chrome-profile`) saklanır. Bu yüzden sahibinden yalnızca bilgisayar açıkken taranır.
+- **arabam.com:** liste araması düz HTTP ile açık (bulut). Detay sayfaları ve km'li "otomobil" görünümü yalnızca gerçek tarayıcıya açık → eklenti. Bulutta km ilan başlığından tahmin edilir.
+- **Otokoç:** bilgisayardan düz HTTP ile açık, GitHub sunucularına kapalı (şu an Tesla ilanı yok; gelince yakalanır).
+- **Borusan Next / sahibinden:** otomasyonla açılan ve görünmez tarayıcıları engelliyor. Program bunu **atlatmaya çalışmaz**; eklenti senin normal Chrome oturumunda okur. Doğrulama çıkarsa (eklenti rozeti "!") sabitlenmiş sekmede kendin tamamlarsın.
 
 > Sitelerin kullanım koşulları otomatik veri toplamayı kısıtlayabilir. Uygulama kişisel kullanım içindir ve istekleri seyrek tutar.
 
@@ -57,11 +61,14 @@ scripts/install-agent.sh            # oturum açılışında otomatik başlar
 scripts/install-agent.sh --uninstall
 tail -f ~/.aractakip/agent.log
 ```
-Ajan bir Chrome penceresi açar; sahibinden doğrulama isterse macOS bildirimi gelir, pencerede "Devam Et"e basman yeter.
 
-### 3) Ayarlar — `config/settings.json`
+### 3) Chrome eklentisi
+`chrome://extensions` → sağ üstte **Geliştirici modu** → **Paketlenmemiş öğe yükle** → `extension` klasörü.
+Eklenti ilk dakikada sabitlenmiş bir sekme açar ve sırayla sayfaları okur. Durumu eklenti simgesinden görebilir, takibi kapatabilirsin.
+
+### 4) Ayarlar — `config/settings.json`
 - `alerts`: hangi ilanlar için bildirim gelsin (`models: ["Model Y"]`, `maxPrice`, `maxKm`, `minYear`, `onlyLabels: ["Fırsat","İyi fiyat"]`, `notifyPriceDrops`, `notifyRemoved`).
-- `agent.intervalMinutes`, `agent.minIntervals`: tarama sıklığı.
+- `agent.extension`: eklenti sekmesinin site başına açma aralıkları (dakika).
 - `cloud.sources`: bulutta taranacak kaynaklar.
 
 ## Komutlar

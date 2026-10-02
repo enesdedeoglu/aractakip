@@ -4,14 +4,15 @@ import { openPage } from '../browser.js';
 
 const BASE = 'https://borusannext.com';
 
-function parseNextData(html) {
-  const m = html.match(/<script id="__NEXT_DATA__" type="application\/json">(.*?)<\/script>/s);
+export function parseNextData(html) {
+  // Tam HTML veya doğrudan __NEXT_DATA__ JSON metni kabul edilir
+  const m = html.trimStart().startsWith('{') ? [null, html] : html.match(/<script id="__NEXT_DATA__" type="application\/json">(.*?)<\/script>/s);
   if (!m) throw new Error('Borusan: __NEXT_DATA__ bulunamadı');
   const p = JSON.parse(m[1]).props.pageProps;
   return { count: p.count || 0, datas: p.datas || [] };
 }
 
-function toListing(d) {
+export function toListing(d) {
   return {
     source: 'borusan',
     sourceId: String(d.announcementNo || d.id),

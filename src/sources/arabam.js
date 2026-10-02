@@ -13,7 +13,7 @@ function bigImage(src) {
   return src.replace(/_\d+x\d+\.jpg$/, '_580x435.jpg');
 }
 
-function parseList(html) {
+export function parseList(html) {
   const $ = cheerio.load(html);
   const out = [];
   $('tr.listing-list-item[id^="listing"]').each((_, tr) => {
@@ -55,6 +55,11 @@ function parseList(html) {
 export async function fetchDetail(listing) {
   // Detay sayfaları düz HTTP istemcilerine kapalı; yerelde gerçek Chrome ile açılır.
   const h = interactive() ? await getHtml(listing.url) : (await fetchText(listing.url, { retries: 0 })).text;
+  return parseDetail(h, listing);
+}
+
+/** Detay sayfası HTML'inden hasar/boya/tramer ve teknik bilgiler */
+export function parseDetail(h, listing = {}) {
   const props = {};
   for (const m of h.matchAll(/\{"Id":\d+,"Key":"([^"]+)","Value":"([^"]*)"/g)) props[m[1]] = m[2];
   const dmg = h.match(/"DamageInfo":\{"Status":(\d+),"DamagePrice":([\d.]+)/);

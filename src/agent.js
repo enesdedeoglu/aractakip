@@ -1,6 +1,7 @@
 // Yerel ajan: bilgisayar açıkken sürekli çalışır.
-//  - arabam (km + hasar detayı), Otokoç, Borusan Next'i gerçek Chrome ile tarar
-//  - sahibinden verisini Chrome eklentisinden (extension/) 127.0.0.1:5174 üzerinden alır
+//  - sahibinden, arabam (km + hasar detayı) ve Borusan Next'i kullanıcının kendi Chrome'undaki
+//    eklenti (extension/) üzerinden okur: eklenti tek bir sabitlenmiş sekmede sırayla sayfa açar
+//  - Otokoç'u doğrudan HTTP ile çeker
 //  - sonuçları bulutla aynı veri dosyasına yazar, değişiklikleri bildirir
 //    npm run agent
 import fs from 'node:fs';
@@ -10,7 +11,8 @@ import http from 'node:http';
 import { runCycle } from './run.js';
 import { loadSettings } from './settings.js';
 import { closeContext } from './browser.js';
-import { normalize as normalizeSahibinden } from './sources/sahibinden.js';
+import { createBridge } from './bridge.js';
+import { openStore } from './store.js';
 import { notifyDesktop } from './notify.js';
 import { log, sleep } from './util.js';
 
@@ -32,46 +34,47 @@ function acquireLock() {
 let chain = Promise.resolve();
 const serial = (fn) => (chain = chain.then(fn, fn).catch((e) => log('Döngü hatası:', e.message)));
 
+let latestDb = null;
 let lastChallengeNotice = 0;
-let lastIngest = null;
+
+const bridge = createBridge({
+  intervals: loadSettings().agent.extension,
+  onChallenge: (url) => {
+    log(`doğrulama ekranı: ${new URL(url).host} (Chrome'daki sabitlenmiş sekmede)`);
+    if (Date.now() - lastChallengeNotice > 30 * 60000) {
+      lastChallengeNotice = Date.now();
+      notifyDesktop(`${new URL(url).host.replace('www.', '')} doğrulama istiyor`, 'Chrome\'daki sabitlenmiş Tesla İlan Takip sekmesinde doğrulamayı tamamlayın.');
+    }
+  },
+  needDetail: () => Object.values(latestDb?.listings || {})
+    .filter((l) => l.source === 'arabam' && l.status === 'active' && !l.detailAt)
+    .sort((a, b) => Date.parse(b.firstSeen) - Date.parse(a.firstSeen))
+    .map((l) => l.url),
+  onScan: (scan) => {
+    log(`eklenti: ${scan.source} ${scan.mode} – ${scan.listings.length} ilan${scan.complete ? ' (tam)' : ''}`);
+    return serial(async () => {
+      const res = await runCycle({ sources: [], runner: 'local', extraScans: [{ ...scan, ok: true, runner: 'local' }] });
+      if (res?.db) latestDb = res.db;
+    });
+  },
+});
 
 function startServer() {
   const server = http.createServer((req, res) => {
     const origin = req.headers.origin || '';
-    // Yalnızca tarayıcı eklentisinden ve yerelden gelen istekler
+    // Yalnızca tarayıcı eklentisinden gelen istekler
     if (origin && !origin.startsWith('chrome-extension://')) { res.writeHead(403).end(); return; }
-    if (req.method === 'GET' && req.url === '/status') {
-      res.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify({ ok: true, lastIngest }));
-      return;
-    }
-    if (req.method !== 'POST' || req.url !== '/ingest') { res.writeHead(404).end(); return; }
+    const json = (code, obj) => res.writeHead(code, { 'Content-Type': 'application/json' }).end(JSON.stringify(obj));
+    if (req.method === 'GET' && req.url === '/status') return json(200, { ok: true, ...bridge.status() });
+    if (req.method === 'GET' && req.url === '/next') return json(200, { url: bridge.next() });
+    if (req.method !== 'POST' || req.url !== '/page') { res.writeHead(404).end(); return; }
     let body = '';
-    req.on('data', (c) => { body += c; if (body.length > 8e6) req.destroy(); });
+    req.on('data', (c) => { body += c; if (body.length > 12e6) req.destroy(); });
     req.on('end', () => {
       let msg;
       try { msg = JSON.parse(body); } catch { res.writeHead(400).end(); return; }
-      res.writeHead(202).end('{}');
-      if (msg.type === 'challenge') {
-        if (Date.now() - lastChallengeNotice > 30 * 60000) {
-          lastChallengeNotice = Date.now();
-          notifyDesktop('sahibinden doğrulama istiyor', 'Chrome\'daki sahibinden sekmesinde "Devam Et"e basın.');
-        }
-        log('sahibinden: doğrulama ekranı (kullanıcının Chrome\'unda)');
-        return;
-      }
-      if (msg.type !== 'scan') return;
-      const listings = normalizeSahibinden(msg.pages || []);
-      const rows = (msg.pages || []).reduce((n, p) => n + (p.rows?.length || 0), 0);
-      if (rows && !listings.length) log('sahibinden: satırlar ayrıştırılamadı, örnek:', JSON.stringify(msg.pages[0]?.rows?.[0]).slice(0, 600), 'başlıklar:', msg.pages[0]?.heads);
-      // Tam tarama ancak toplamın büyük kısmı geldiyse "tam" sayılır (yanlışlıkla kaldırma olmasın)
-      const complete = !!msg.complete && (!msg.total || listings.length >= msg.total * 0.9);
-      lastIngest = { at: new Date().toISOString(), count: listings.length, complete };
-      log(`sahibinden (eklenti): ${listings.length} ilan${complete ? ' (tam tarama)' : ''}`);
-      serial(() => runCycle({
-        sources: [],
-        runner: 'local',
-        extraScans: [{ source: 'sahibinden', ok: true, listings, complete, mode: complete ? 'full' : 'quick', runner: 'local' }],
-      }));
+      json(202, {});
+      bridge.page(msg).catch((e) => log('eklenti sayfa hatası:', e.message));
     });
   });
   server.on('error', (e) => log('Eklenti sunucusu başlatılamadı:', e.message));
@@ -87,6 +90,7 @@ async function main() {
   process.on('SIGTERM', stop);
 
   log('Tesla ilan takip ajanı başladı.');
+  try { latestDb = (await openStore().load()).db; } catch (e) { log('Veri okunamadı:', e.message); }
   startServer();
   for (;;) {
     const { intervalMinutes, sources, minIntervals = {} } = loadSettings().agent;

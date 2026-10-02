@@ -1,18 +1,22 @@
 const $ = (id) => document.getElementById(id);
-const ago = (t) => (t ? `${Math.round((Date.now() - t) / 60000)} dk önce` : '—');
+const ago = (t) => (t ? `${Math.max(0, Math.round((Date.now() - (typeof t === 'number' ? t : Date.parse(t))) / 60000))} dk önce` : '—');
 async function render() {
-  const s = { enabled: true, intervalMin: 5, ...(await chrome.storage.local.get(null)) };
+  const s = { enabled: true, ...(await chrome.storage.local.get(null)) };
   $('enabled').checked = s.enabled;
-  $('interval').value = s.intervalMin;
-  $('last').textContent = ago(s.lastPage);
-  $('count').textContent = s.lastCount ?? '—';
-  $('total').textContent = s.total ?? '—';
-  $('full').textContent = s.crawl ? `sürüyor (${s.crawl.pages.length}. sayfa)` : ago(s.lastFull);
-  $('agent').textContent = s.agentOk ? 'bağlı' : s.agentOk === false ? 'bağlı değil' : '—';
+  $('last').textContent = s.lastPage ? `${s.lastKind} · ${ago(s.lastPage)}` : '—';
   $('err').textContent = s.lastError || '';
+  try {
+    const st = await (await fetch('http://127.0.0.1:5174/status')).json();
+    $('agent').textContent = 'çalışıyor';
+    $('crawl').textContent = st.crawl ? `${st.crawl.source} (${st.crawl.pages})` : 'yok';
+    for (const k of ['arabam', 'sahibinden', 'borusan']) $(k).textContent = ago(st.last?.[k]);
+  } catch {
+    $('agent').textContent = 'çalışmıyor';
+  }
 }
 $('enabled').onchange = (e) => chrome.storage.local.set({ enabled: e.target.checked });
-$('interval').onchange = (e) => chrome.storage.local.set({ intervalMin: Math.max(2, Number(e.target.value) || 5) });
-$('scan').onclick = () => chrome.runtime.sendMessage({ type: 'scanNow' }).then(() => setTimeout(render, 4000));
-$('fullBtn').onclick = () => chrome.runtime.sendMessage({ type: 'fullNow' }).then(() => setTimeout(render, 4000));
+$('tab').onclick = async () => {
+  const { tabId } = await chrome.storage.local.get('tabId');
+  if (tabId) chrome.tabs.update(tabId, { active: true }).catch(() => {});
+};
 render();

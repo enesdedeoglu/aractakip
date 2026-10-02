@@ -9,12 +9,14 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const DEFAULTS = {
   repo: null,
   agent: {
-    intervalMinutes: 3,
+    intervalMinutes: 5,
     fullScanEveryMinutes: 60,
-    // sahibinden burada yok: verisi Chrome eklentisinden gelir (extension/)
-    sources: ['arabam', 'otokoc', 'borusan'],
-    // kaynağa özel en kısa aralık (dakika) – sitelere yük bindirmemek için
-    minIntervals: { borusan: 5, otokoc: 5 },
+    // Ajanın doğrudan (tarayıcısız) taradığı kaynaklar. sahibinden, arabam ve Borusan
+    // kullanıcının Chrome'undaki eklenti üzerinden gelir (bkz. extension).
+    sources: ['otokoc'],
+    minIntervals: {},
+    // Eklenti sekmesinin sayfa açma aralıkları (dakika)
+    extension: { sahibinden: 5, sahibindenFull: 360, arabam: 3, arabamFull: 60, borusan: 5, gap: 0.4 },
   },
   // Otokoç ve Borusan GitHub sunucularını engelliyor; Otokoç ara sıra açık olabilir diye denenir
   cloud: { sources: ['arabam', 'otokoc'] },
@@ -51,7 +53,7 @@ export function loadSettings() {
   return {
     ...DEFAULTS,
     ...user,
-    agent: { ...DEFAULTS.agent, ...(user.agent || {}) },
+    agent: { ...DEFAULTS.agent, ...(user.agent || {}), extension: { ...DEFAULTS.agent.extension, ...(user.agent?.extension || {}) } },
     cloud: { ...DEFAULTS.cloud, ...(user.cloud || {}) },
     alerts: { ...DEFAULTS.alerts, ...(user.alerts || {}) },
   };
