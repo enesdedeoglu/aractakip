@@ -7,7 +7,7 @@
     "minIntervals": { "borusan": 5, "otokoc": 5 }
   },
   "cloud": {
-    "sources": ["arabam", "otokoc", "borusan"]
+    "sources": ["arabam", "otokoc"]
   },
   "alerts": {
     "models": [],

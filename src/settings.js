@@ -16,7 +16,8 @@ const DEFAULTS = {
     // kaynağa özel en kısa aralık (dakika) – sitelere yük bindirmemek için
     minIntervals: { borusan: 5, otokoc: 5 },
   },
-  cloud: { sources: ['arabam', 'otokoc', 'borusan'] },
+  // Otokoç ve Borusan GitHub sunucularını engelliyor; Otokoç ara sıra açık olabilir diye denenir
+  cloud: { sources: ['arabam', 'otokoc'] },
   // Bildirim filtresi: boş bırakılırsa tüm yeni Tesla ilanları bildirilir
   alerts: {
     models: [],

@@ -8,7 +8,7 @@ her ilana puan ve tavsiye verir. Yeni ilan, fiyat değişimi ve kalkan ilanları
 
 | Parça | Ne zaman çalışır | Kaynaklar |
 |---|---|---|
-| **Bulut** (GitHub Actions, 10 dk'da bir) | Bilgisayar kapalıyken de | arabam.com, Otokoç (Borusan Next denenir) |
+| **Bulut** (GitHub Actions, 10 dk'da bir) | Bilgisayar kapalıyken de | arabam.com (Otokoç ve Borusan GitHub sunucularını engelliyor) |
 | **Yerel ajan** (gerçek Chrome, 3–6 dk'da bir) | Bilgisayar açıkken | sahibinden, arabam.com (km + hasar detayı), Otokoç, Borusan Next |
 | **Web arayüzü** (GitHub Pages) | Her zaman | Ortak veri: `data/db.json` |
 
