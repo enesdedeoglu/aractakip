@@ -284,7 +284,7 @@
     const c = el('article', { class: `card ${l.status !== 'active' ? 'removed' : ''}`, 'data-key': l.key });
     c.innerHTML = `
       <a class="thumb" href="${esc(l.url)}" target="_blank" rel="noopener">
-        ${l.image ? `<img src="${esc(l.image)}" alt="" loading="lazy" referrerpolicy="no-referrer">` : '<span class="noimg">fotoğraf yok</span>'}
+        ${l.image ? `<img src="${esc(l.image)}" alt="" loading="lazy" referrerpolicy="no-referrer">` : `<span class="noimg">${l.megaPhoto ? 'Megafotolu ilan · fotoğraflar ilan sayfasında ↗' : 'fotoğraf yok'}</span>`}
         <span class="badge ${labelCls}">${LABEL_EMOJI[a.label] || ''} ${esc(a.label || '')}${a.label !== 'Veri az' ? ` · ${a.score}` : ''}</span>
         ${l.status !== 'active' ? '<span class="ribbon">KALKTI</span>' : isNew(l) ? '<span class="ribbon">YENİ</span>' : ''}
         <span class="src-tag">${SOURCE_NAMES[l.source]}${others.length ? ` +${others.length} site` : ''}</span>

@@ -50,6 +50,8 @@ function toListing(r, heads) {
     district: rest.join(' ') || null,
     sellerType: r.store ? 'galeri' : 'sahibinden',
     image: pickImage(r),
+    // "Megafotolu" vitrin ilanlarında sahibinden listede küçük fotoğraf göstermiyor (yalnızca ilan sayfasında)
+    megaPhoto: !pickImage(r) && /iconHasMegaPhoto|otherNoImage|Megafotolu/i.test(`${r.image || ''} ${(r.images || []).join(' ')} ${r.imgHtml || ''}`) ? true : undefined,
     color: byHead('renk'),
     publishedAt: parseTrDate((dateTxt || '').replace(/(\d{1,2})\s+(\S+)\s+(\d{4}).*/s, '$1 $2 $3')),
     damage: { tramer: null, heavy: null, summary: null, original: null },
