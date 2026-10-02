@@ -10,6 +10,7 @@ her ilana puan ve tavsiye verir. Yeni ilan, fiyat değişimi ve kalkan ilanları
 |---|---|---|
 | **Yerel ajan** (arka planda, pencere açmaz) | Bilgisayar açıkken | Otokoç (doğrudan) + eklentiden gelen sayfalar |
 | **Chrome eklentisi** (kendi Chrome'unda tek sabitlenmiş sekme) | Chrome açıkken | sahibinden, arabam.com (km + hasar detayı), Borusan Next |
+| **Android tablet** (Termux + Firefox Nightly) | Tablet açıkken (7/24) | Yukarıdakilerin hepsi |
 | **Web arayüzü** (GitHub Pages) | Her zaman | <https://enesdedeoglu.github.io/aractakip/> (yerelde: <http://127.0.0.1:5173>) |
 | **Bulut taraması** (GitHub Actions) | **Kapalı** | Açmak için aşağıya bakın |
 
@@ -72,6 +73,22 @@ tail -f ~/.aractakip/agent.log
 ### 3) Chrome eklentisi
 `chrome://extensions` → sağ üstte **Geliştirici modu** → **Paketlenmemiş öğe yükle** → `extension` klasörü.
 Eklenti ilk dakikada sabitlenmiş bir sekme açar ve sırayla sayfaları okur. Durumu eklenti simgesinden görebilir, takibi kapatabilirsin.
+
+### Android tablette çalıştırma (isteğe bağlı, 7/24)
+Boş bir Android tablet, bilgisayar kapalıyken de tüm siteleri tarayabilir. Mac ve tablet aynı anda çalışabilir:
+bir site başka bir ajan tarafından az önce tarandıysa diğeri o turu atlar.
+
+1. Kur: [Termux](https://github.com/termux/termux-app/releases), [Termux:Boot](https://github.com/termux/termux-boot/releases),
+   [Termux:API](https://github.com/termux/termux-api/releases) (GitHub sürümleri) ve **Firefox Nightly**.
+2. Termux'ta: `curl -fsSL https://raw.githubusercontent.com/enesdedeoglu/aractakip/main/scripts/termux-setup.sh | sh`
+   (GitHub girişi ve Gmail uygulama şifresini sorar).
+3. Firefox Nightly: `about:config` → `xpinstall.signatures.required` = **false**; Ayarlar → Firefox Nightly hakkında →
+   logoya 5 kez dokun; sonra <https://enesdedeoglu.github.io/aractakip/aractakip-firefox.xpi> adresini açıp indir ve
+   Ayarlar → **Dosyadan eklenti yükle** ile kur. Sonraki sürümler otomatik güncellenir.
+4. Termux:Boot'u bir kez aç; Termux ve Firefox Nightly için pil optimizasyonunu kapat; Geliştirici seçenekleri →
+   **Uyanık kal**. Tableti şarjda, Firefox önde açık bırak (Android'de eklenti sayfaları öndeki sekmede açar).
+
+Kayıtlar: Termux'ta `tail -f ~/.aractakip/agent.log`.
 
 ### 4) Ayarlar — `config/settings.json`
 - `alerts`: hangi ilanlar için bildirim gelsin (`models: ["Model Y"]`, `maxPrice`, `maxKm`, `minYear`, `onlyLabels: ["Fırsat","İyi fiyat"]`, `notifyPriceDrops`, `notifyRemoved`).
