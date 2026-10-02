@@ -21,6 +21,8 @@
         href: a ? a.getAttribute('href') : null,
         title: ((a && (a.getAttribute('title') || a.innerText)) || '').trim(),
         image: img ? img.getAttribute('data-src') || img.getAttribute('src') : null,
+        // Satırdaki ilk görsel bazen "çok fotoğraflı" simgesi olabiliyor; tümünü gönder, ajan seçsin
+        images: [...tr.querySelectorAll('img, source')].flatMap((e) => [e.getAttribute('data-src'), e.getAttribute('src'), (e.getAttribute('srcset') || '').split(' ')[0]]).filter(Boolean),
         store: !!tr.querySelector('.store-icon'),
         cells: [...tr.querySelectorAll('td')].map((td) => ({ cls: td.className, text: td.innerText.trim() })),
       };

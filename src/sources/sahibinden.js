@@ -6,6 +6,14 @@ import { parseNumber, parseTrDate } from '../util.js';
 
 const BASE = 'https://www.sahibinden.com';
 
+// Araç fotoğrafı: /photos/ (büyük boyuta çevrilir) veya öne çıkan ilan önizlemesi; simgeler atlanır
+export function pickImage(r) {
+  const cands = [...(r.images || []), r.image].filter((u) => typeof u === 'string' && /^https?:/.test(u));
+  const photo = cands.find((u) => /\/photos\//.test(u) && /\.(jpe?g|webp|avif)/i.test(u));
+  if (photo) return photo.replace(/\/(lthmb|thmb)_/, '/x5_').replace(/\.avif$/, '.jpg');
+  return cands.find((u) => /primeRow|pr_thmb_/.test(u)) || null;
+}
+
 function toListing(r, heads) {
   const lc = (s) => (s || '').toLocaleLowerCase('tr-TR');
   const hs = heads.map(lc);
@@ -41,7 +49,7 @@ function toListing(r, heads) {
     city: city || null,
     district: rest.join(' ') || null,
     sellerType: r.store ? 'galeri' : 'sahibinden',
-    image: r.image ? r.image.replace('/lthmb_', '/x5_') : null,
+    image: pickImage(r),
     color: byHead('renk'),
     publishedAt: parseTrDate((dateTxt || '').replace(/(\d{1,2})\s+(\S+)\s+(\d{4}).*/s, '$1 $2 $3')),
     damage: { tramer: null, heavy: null, summary: null, original: null },

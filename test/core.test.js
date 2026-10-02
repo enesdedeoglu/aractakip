@@ -73,3 +73,12 @@ test('farklı sitelerdeki aynı araç eşleşir, farklı şehir/aynı site eşle
   assert.equal(e.dup, undefined);
   assert.equal([a, b, d].filter((l) => l.dup?.primary).length, 1);
 });
+
+import { pickImage } from '../src/sources/sahibinden.js';
+
+test('sahibinden: simge yerine araç fotoğrafı seçilir', () => {
+  const icon = 'https://s0.shbdn.com/assets/images/iconHasMegaPhotoLarge:d94.png';
+  assert.equal(pickImage({ image: icon, images: [icon, 'https://i0.shbdn.com/photos/09/95/62/lthmb_1315099562zn3.jpg'] }), 'https://i0.shbdn.com/photos/09/95/62/x5_1315099562zn3.jpg');
+  assert.equal(pickImage({ image: icon }), null);
+  assert.match(pickImage({ image: 'https://image5.sahibinden.com/primeRow/72/44/36/pr_thmb_1340724436vbb.jpg' }), /primeRow/);
+});

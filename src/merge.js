@@ -127,6 +127,8 @@ function mergeDamage(a = {}, b = {}) {
 /** Sınıflandırma + piyasa modeli + tavsiyeleri yeniden hesapla */
 export function recompute(db) {
   const all = Object.values(db.listings);
+  // Site simgesi gibi fotoğraf olmayan görsel adreslerini temizle (sonraki taramada doğrusu gelir)
+  for (const l of all) if (l.image && /\/assets\/images\//.test(l.image)) l.image = null;
   for (const l of all) l.c = classify(l);
   // Farklı sitelerdeki aynı aracı eşleştir; piyasa modeli ve karşılaştırmalar her aracı bir kez saysın
   db.dupGroups = findDuplicates(all);
