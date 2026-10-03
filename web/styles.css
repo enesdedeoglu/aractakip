@@ -315,3 +315,9 @@ table.hist .num { text-align: right; white-space: nowrap; }
 table.hist td:first-child { white-space: nowrap; }
 .d-note { color: var(--muted); font-size: 13px; margin: 6px 0 12px; }
 @media (max-width: 560px) { .d-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); } dialog.detail { padding: 14px; } }
+
+.mail-btn.paused { border-color: var(--warn); color: var(--warn); }
+dialog.detail.small { width: min(460px, calc(100vw - 24px)); }
+.mail-actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0; }
+.mail-actions .btn.primary { background: var(--text); color: var(--bg); border-color: var(--text); }
+ol.steps { margin: 8px 0 0; padding-left: 20px; display: flex; flex-direction: column; gap: 6px; font-size: 14px; }

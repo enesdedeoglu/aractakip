@@ -1,0 +1,38 @@
+name: Mail bildirimleri
+
+on:
+  workflow_dispatch:
+    inputs:
+      islem:
+        description: 'Mail bildirimleri'
+        type: choice
+        options: [durdur, devam]
+        default: durdur
+      sure:
+        description: 'Durdurma süresi'
+        type: choice
+        options: ['1 gün', '3 gün', '1 hafta', 'süresiz']
+        default: 'süresiz'
+
+permissions:
+  contents: write
+  actions: write
+
+jobs:
+  toggle:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci --no-audit --no-fund --omit=optional
+      - run: node scripts/mail-toggle.js "${{ inputs.islem }}" "${{ inputs.sure }}"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ARACTAKIP_REPO: ${{ github.repository }}
+      - name: Siteyi yenile
+        run: gh workflow run scrape.yml -f mode=deploy --repo "${{ github.repository }}"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

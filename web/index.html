@@ -19,6 +19,7 @@
     </div>
     <div class="top-actions">
       <span class="live" id="live" title="Otomatik yenileme"><i></i>canlı</span>
+      <button class="btn ghost mail-btn" id="mailBtn" type="button" title="Mail bildirimlerini durdur / devam ettir">✉️ Mail</button>
       <button class="btn ghost" id="notifyBtn" type="button">🔔 Bildirimleri aç</button>
     </div>
   </header>
@@ -153,6 +154,15 @@
       <button class="btn ghost" id="dClose" type="button" aria-label="Kapat">✕</button>
     </div>
     <div id="dBody"></div>
+  </dialog>
+
+  <dialog id="mailDlg" class="detail small" aria-labelledby="mailTitle">
+    <div class="d-head">
+      <h2 id="mailTitle">Mail bildirimleri</h2>
+      <button class="btn ghost" id="mailClose" type="button" aria-label="Kapat">✕</button>
+    </div>
+    <p id="mailState" class="d-note"></p>
+    <div id="mailBody"></div>
   </dialog>
 
   <div class="toasts" id="toasts" aria-live="polite"></div>

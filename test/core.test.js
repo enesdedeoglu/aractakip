@@ -134,3 +134,12 @@ test('kaldırılıp yeniden ilana konan araç eşleşir ve fiyat geçmişi birle
   assert.deepEqual(relist.vehicleHistory.map((h) => h.p), [2700000, 2600000, 2500000]);
   assert.equal(other.relistOf, undefined);
 });
+
+import { mailPaused } from '../src/notify.js';
+
+test('mail duraklatma', () => {
+  assert.equal(mailPaused({}), false);
+  assert.equal(mailPaused({ prefs: { mailPausedUntil: 'forever' } }), true);
+  assert.equal(mailPaused({ prefs: { mailPausedUntil: new Date(Date.now() + 3600e3).toISOString() } }), true);
+  assert.equal(mailPaused({ prefs: { mailPausedUntil: new Date(Date.now() - 1000).toISOString() } }), false, 'süresi dolunca kendiliğinden açılır');
+});

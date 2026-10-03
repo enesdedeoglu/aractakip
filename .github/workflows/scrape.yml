@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
     inputs:
       mode:
-        description: 'Tarama modu (auto / quick / full)'
+        description: 'Tarama modu (auto / quick / full / deploy)'
         default: auto
   push:
     branches: [main]
@@ -25,7 +25,8 @@ concurrency:
 
 jobs:
   scrape:
-    if: github.event_name != 'push'
+    # mode=deploy: yalnızca siteyi yeniden yayınla (ör. mail ayarı değişince)
+    if: github.event_name != 'push' && github.event.inputs.mode != 'deploy'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     outputs:

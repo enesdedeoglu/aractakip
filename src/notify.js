@@ -177,9 +177,19 @@ export function notifyDesktop(title, message) {
   execFile('osascript', ['-e', script], () => {});
 }
 
+/** Mail duraklatıldı mı? db.prefs.mailPausedUntil: ISO tarih veya 'forever' */
+export function mailPaused(db) {
+  const u = db?.prefs?.mailPausedUntil;
+  return u === 'forever' || (!!u && Date.parse(u) > Date.now());
+}
+
 export async function sendAlerts(alert) {
   if (alert.empty) return [];
   const sent = [];
+  if (mailPaused(alert.db)) {
+    log('Mail duraklatılmış; bildirim gönderilmedi.');
+    return sent;
+  }
   for (const [name, fn] of [['e-posta', sendEmail], ['ntfy', sendNtfy], ['telegram', sendTelegram]]) {
     try { if (await fn(alert)) sent.push(name); }
     catch (e) { log(`Bildirim hatası (${name}):`, e.message); }

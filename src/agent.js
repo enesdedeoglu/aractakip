@@ -15,6 +15,7 @@ import { loadSettings } from './settings.js';
 import { closeContext } from './browser.js';
 import { createBridge } from './bridge.js';
 import { openStore } from './store.js';
+import { setMailPause } from './prefs.js';
 import { notifyDesktop } from './notify.js';
 import { log, sleep } from './util.js';
 
@@ -123,6 +124,22 @@ const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; ch
 function startUi() {
   const server = http.createServer((req, res) => {
     const url = new URL(req.url, 'http://x').pathname;
+    if (url === '/api/mail' && req.method === 'POST') {
+      let b = '';
+      req.on('data', (c) => { b += c; if (b.length > 1000) req.destroy(); });
+      req.on('end', async () => {
+        try {
+          const { action, duration } = JSON.parse(b || '{}');
+          const prefs = await serial(() => setMailPause(action === 'devam' ? 'devam' : 'durdur', duration || 'süresiz', RUNNER));
+          if (latestDb) latestDb.prefs = prefs || (await openStore().load()).db.prefs;
+          log(`Mail bildirimleri: ${action === 'devam' ? 'devam' : `durduruldu (${duration || 'süresiz'})`}`);
+          res.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify({ ok: true, prefs: latestDb?.prefs }));
+        } catch (e) {
+          res.writeHead(500, { 'Content-Type': 'application/json' }).end(JSON.stringify({ ok: false, error: e.message }));
+        }
+      });
+      return;
+    }
     if (url === '/data/db.json') {
       if (!latestDb) { res.writeHead(503).end('veri henüz yüklenmedi'); return; }
       res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }).end(JSON.stringify(latestDb));

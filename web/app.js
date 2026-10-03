@@ -184,6 +184,7 @@
 
   function renderHeader() {
     const db = state.db;
+    renderMailBtn();
     $('#updated').textContent = `Son güncelleme: ${ago(db.updatedAt)} · ${new Date(db.updatedAt).toLocaleString('tr-TR')}`;
     const active = state.listings.filter((l) => l.status === 'active');
     const cars = active.filter(isPrimary);
@@ -535,6 +536,58 @@
     if (location.hash.startsWith('#ilan=')) history.replaceState(null, '', location.pathname + location.search);
   }
 
+  // ---------- Mail bildirimleri: durdur / devam ----------
+  const LOCAL = /^(127\.0\.0\.1|localhost)$/.test(location.hostname);
+  const WORKFLOW_URL = 'https://github.com/enesdedeoglu/aractakip/actions/workflows/mail.yml';
+
+  function mailPausedUntil() {
+    const u = state.db?.prefs?.mailPausedUntil;
+    if (u === 'forever') return 'forever';
+    return u && Date.parse(u) > Date.now() ? u : null;
+  }
+
+  function renderMailBtn() {
+    const p = mailPausedUntil();
+    const b = $('#mailBtn');
+    b.classList.toggle('paused', !!p);
+    b.textContent = p ? '✉️ Mail durduruldu' : '✉️ Mail açık';
+  }
+
+  function openMailDlg() {
+    const p = mailPausedUntil();
+    $('#mailState').innerHTML = p
+      ? `Mail bildirimleri <b>durduruldu</b>${p === 'forever' ? ' (süresiz)' : ` – ${new Date(p).toLocaleString('tr-TR', { day: '2-digit', month: 'long', hour: '2-digit', minute: '2-digit' })}'e kadar`}. Bu sürede yeni ilan ve fiyat değişikliği maili gelmez; sitede her şey güncellenmeye devam eder.`
+      : 'Mail bildirimleri <b>açık</b>: yeni ilan ve fiyat değişikliklerinde mail geliyor.';
+    if (LOCAL) {
+      $('#mailBody').innerHTML = p
+        ? '<div class="mail-actions"><button class="btn primary" data-mail="devam" type="button">Maili yeniden başlat</button></div>'
+        : `<div class="mail-actions">${['1 gün', '3 gün', '1 hafta', 'süresiz'].map((d) => `<button class="btn" data-mail="durdur" data-dur="${d}" type="button">${d} durdur</button>`).join('')}</div>`;
+    } else {
+      $('#mailBody').innerHTML = `<ol class="steps">
+        <li><a href="${WORKFLOW_URL}" target="_blank" rel="noopener"><b>GitHub'daki "Mail bildirimleri" sayfasını aç ↗</b></a> (GitHub hesabınla giriş yapmış olmalısın – bu ayarı yalnızca sen değiştirebilirsin)</li>
+        <li>Sağdaki <b>Run workflow</b> düğmesine bas.</li>
+        <li><b>${p ? 'devam' : 'durdur'}</b>${p ? '' : ' ve süreyi'} seç, yeşil <b>Run workflow</b> ile onayla.</li>
+        <li>1–2 dakika içinde bu sayfada durum güncellenir.</li>
+      </ol>
+      <p class="hint">Bilgisayarında veya tablette <code>127.0.0.1:5173</code> adresinden açarsan tek tıkla değiştirebilirsin.</p>`;
+    }
+    const d = $('#mailDlg');
+    if (!d.open) d.showModal();
+  }
+
+  async function setMail(action, duration) {
+    try {
+      const r = await (await fetch('/api/mail', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action, duration }) })).json();
+      if (!r.ok) throw new Error(r.error);
+      state.db.prefs = r.prefs;
+      renderMailBtn();
+      openMailDlg();
+      toast(action === 'devam' ? 'Mail bildirimleri yeniden başladı.' : `Mail bildirimleri durduruldu (${duration}).`);
+    } catch (e) {
+      toast(`Değiştirilemedi: ${esc(e.message)}`);
+    }
+  }
+
   // ---------- Akış ----------
   function renderFeed() {
     const evs = (state.db.events || []).slice(0, 150);
@@ -575,6 +628,12 @@
       const i = arr.indexOf(t.dataset.val);
       if (i >= 0) arr.splice(i, 1); else arr.push(t.dataset.val);
       update();
+    } else if (t.id === 'mailBtn') {
+      openMailDlg();
+    } else if (t.id === 'mailClose') {
+      $('#mailDlg').close();
+    } else if (t.dataset.mail) {
+      setMail(t.dataset.mail, t.dataset.dur);
     } else if (t.dataset.hist) {
       openDetail(t.dataset.hist);
     } else if (t.id === 'dClose') {
@@ -620,6 +679,7 @@
   document.addEventListener('visibilitychange', () => { if (!document.hidden) { document.title = 'Tesla İlan Takip'; load(); } });
 
   $('#detail').addEventListener('click', (e) => { if (e.target.id === 'detail') closeDetail(); }); // arka plana tıklayınca kapan
+  $('#mailDlg').addEventListener('click', (e) => { if (e.target.id === 'mailDlg') e.target.close(); });
   $('#detail').addEventListener('close', () => { if (location.hash.startsWith('#ilan=')) history.replaceState(null, '', location.pathname + location.search); });
 
   const tab = store.get('tab', 'listings');
