@@ -147,7 +147,15 @@ input[type="search"], input[type="number"], select {
 .chk { display: flex; gap: 8px; align-items: center; font-size: 13px; cursor: pointer; }
 .only-mobile { display: none; }
 
-.result-head { display: flex; justify-content: space-between; color: var(--muted); margin-bottom: 10px; font-size: 13px; }
+.result-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; color: var(--muted); margin-bottom: 10px; font-size: 13px; }
+.switch { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; color: var(--text); font-weight: 600; user-select: none; }
+.switch input { position: absolute; opacity: 0; width: 0; height: 0; }
+.switch .track { width: 38px; height: 22px; border-radius: 999px; background: var(--border); position: relative; transition: background .15s; flex: none; }
+.switch .knob { position: absolute; top: 3px; left: 3px; width: 16px; height: 16px; border-radius: 50%; background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,.3); transition: transform .15s; }
+.switch input:checked + .track { background: var(--good); }
+.switch input:checked + .track .knob { transform: translateX(16px); }
+.switch input:focus-visible + .track { outline: 2px solid var(--info); outline-offset: 2px; }
+.switch small { color: var(--muted); font-weight: 400; }
 .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(290px, 1fr)); gap: 14px; }
 
 .card {

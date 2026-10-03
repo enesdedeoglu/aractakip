@@ -47,7 +47,7 @@ function pickMode(requested, name, db, fullEveryMin) {
   return Date.now() - last > fullEveryMin * MIN ? 'full' : 'quick';
 }
 
-export async function runCycle({ mode = 'auto', sources, runner = 'local', dry = false, extraScans = [] } = {}) {
+export async function runCycle({ mode = 'auto', sources, runner = 'local', dry = false, extraScans = [], codeVersion = null } = {}) {
   const settings = loadSettings();
   const store = openStore();
   let { db, version } = await store.load();
@@ -59,6 +59,7 @@ export async function runCycle({ mode = 'auto', sources, runner = 'local', dry =
     scans.push(await scanSource(name, pickMode(mode, name, db, fullEvery), db, runner));
   }
   scans.push(...extraScans);
+  if (codeVersion) for (const sc of scans) sc.v = codeVersion;
   if (!scans.length) return null;
 
   for (let attempt = 1; attempt <= 6; attempt++) {

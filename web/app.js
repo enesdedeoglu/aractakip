@@ -48,10 +48,11 @@
     shown: PAGE,
     f: Object.assign({
       model: null, q: '', sort: 'score', labels: [], gens: [], trims: [], sources: [], sellers: [], heavy: [],
-      yMin: '', yMax: '', pMax: '', kMax: '', onlyNew: false, noDamage: false, hideReserved: false, onlyFav: false, showRemoved: false, dedupe: true,
+      yMin: '', yMax: '', pMax: '', kMax: '', onlyNew: false, noDamage: false, hideReserved: false, onlyFav: false, showRemoved: false, dedupe: true, hideHeavy: true,
     }, store.get('filters', {})),
   };
   state.f.heavy ||= [];
+  if (state.f.hideHeavy === undefined) state.f.hideHeavy = true;
 
   // ---------- Veri ----------
   async function load(first = false) {
@@ -137,6 +138,7 @@
       if (f.kMax && l.km != null && l.km > +f.kMax) return false;
       if (f.onlyNew && !isNew(l)) return false;
       if (f.noDamage && hasDamage(l)) return false;
+      if (f.hideHeavy && l.c.heavy === 'var') return false;
       if (f.hideReserved && l.reserved) return false;
       if (f.onlyFav && !state.favs.has(l.key)) return false;
       if (q) {
@@ -312,6 +314,8 @@
   function renderGrid() {
     const list = baseFiltered().sort(SORTS[state.f.sort] || SORTS.score);
     $('#count').textContent = `${list.length} ilan`;
+    const hidden = state.f.hideHeavy ? collapse(state.listings.filter((l) => l.status === 'active' && l.c.heavy === 'var')).length : 0;
+    $('#heavyCount').textContent = hidden ? `(${hidden} gizli)` : '';
     const grid = $('#grid');
     grid.replaceChildren(...list.slice(0, state.shown).map(card));
     if (!list.length) grid.innerHTML = '<div class="empty">Bu filtrelere uyan ilan yok.</div>';
@@ -376,7 +380,7 @@
     const f = state.f;
     $('#q').value = f.q; $('#sort').value = f.sort;
     for (const k of ['yMin', 'yMax', 'pMax', 'kMax']) $('#' + k).value = f[k];
-    for (const k of ['onlyNew', 'noDamage', 'hideReserved', 'onlyFav', 'showRemoved', 'dedupe']) $('#' + k).checked = f[k];
+    for (const k of ['onlyNew', 'noDamage', 'hideReserved', 'onlyFav', 'showRemoved', 'dedupe', 'hideHeavy']) $('#' + k).checked = f[k];
   }
 
   document.addEventListener('click', (e) => {
@@ -407,9 +411,9 @@
   $('#q').addEventListener('input', (e) => { clearTimeout(qTimer); qTimer = setTimeout(() => { state.f.q = e.target.value; update(); }, 200); });
   $('#sort').addEventListener('change', (e) => { state.f.sort = e.target.value; update(); });
   for (const k of ['yMin', 'yMax', 'pMax', 'kMax']) $('#' + k).addEventListener('change', (e) => { state.f[k] = e.target.value; update(); });
-  for (const k of ['onlyNew', 'noDamage', 'hideReserved', 'onlyFav', 'showRemoved', 'dedupe']) $('#' + k).addEventListener('change', (e) => { state.f[k] = e.target.checked; update(); });
+  for (const k of ['onlyNew', 'noDamage', 'hideReserved', 'onlyFav', 'showRemoved', 'dedupe', 'hideHeavy']) $('#' + k).addEventListener('change', (e) => { state.f[k] = e.target.checked; update(); });
   $('#reset').addEventListener('click', () => {
-    Object.assign(state.f, { model: null, q: '', labels: [], gens: [], trims: [], sources: [], sellers: [], heavy: [], yMin: '', yMax: '', pMax: '', kMax: '', onlyNew: false, noDamage: false, hideReserved: false, onlyFav: false, showRemoved: false, dedupe: true });
+    Object.assign(state.f, { model: null, q: '', labels: [], gens: [], trims: [], sources: [], sellers: [], heavy: [], yMin: '', yMax: '', pMax: '', kMax: '', onlyNew: false, noDamage: false, hideReserved: false, onlyFav: false, showRemoved: false, dedupe: true, hideHeavy: true });
     syncInputs(); update();
   });
   $('#more').addEventListener('click', () => { state.shown += PAGE; renderGrid(); });

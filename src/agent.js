@@ -8,7 +8,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import http from 'node:http';
-import { execFile } from 'node:child_process';
+import { execFile, execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { runCycle } from './run.js';
 import { loadSettings } from './settings.js';
@@ -22,6 +22,13 @@ const LOCK = path.join(os.homedir(), '.aractakip', 'agent.lock');
 const PORT = Number(process.env.AGENT_PORT || 5174);
 // Bu ajanın adı: Mac'te "local", Android tablette (Termux) "tablet"
 const RUNNER = process.env.ARACTAKIP_RUNNER || (process.platform === 'android' ? 'tablet' : 'local');
+// Kod sürümü (son commit zamanı): siteyi tarayan cihaz eski koddaysa güncel cihaz devralır
+const VERSION = (() => {
+  try {
+    const dir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+    return Number(execFileSync('git', ['-C', dir, 'log', '-1', '--format=%ct'], { encoding: 'utf8' }).trim()) || 0;
+  } catch { return 0; }
+})();
 
 function acquireLock() {
   fs.mkdirSync(path.dirname(LOCK), { recursive: true });
@@ -44,6 +51,7 @@ let lastChallengeNotice = 0;
 const bridge = createBridge({
   intervals: loadSettings().agent.extension,
   runner: RUNNER,
+  version: VERSION,
   // Ortak kayıttaki zamanlama: başka cihaz taradıysa veya ajan yeniden başladıysa tekrar etme
   shared: (source) => latestDb?.sources?.[source] || {},
   onChallenge: (url, info = {}) => {
@@ -65,7 +73,7 @@ const bridge = createBridge({
   onScan: (scan) => {
     log(`eklenti: ${scan.source} ${scan.mode} – ${scan.listings.length} ilan${scan.complete ? ' (tam)' : ''}`);
     return serial(async () => {
-      const res = await runCycle({ sources: [], runner: RUNNER, extraScans: [{ ok: true, ...scan, runner: RUNNER }] });
+      const res = await runCycle({ sources: [], runner: RUNNER, codeVersion: VERSION, extraScans: [{ ok: true, ...scan, runner: RUNNER }] });
       if (res?.db) latestDb = res.db;
     });
   },
@@ -123,7 +131,8 @@ function startUi() {
     if (!file.startsWith(WEB_DIR)) { res.writeHead(403).end(); return; }
     fs.readFile(file, (err, buf) => {
       if (err) { res.writeHead(404).end('bulunamadı'); return; }
-      res.writeHead(200, { 'Content-Type': TYPES[path.extname(file)] || 'application/octet-stream', 'Cache-Control': 'no-store' }).end(buf);
+      const body = file.endsWith('index.html') ? buf.toString().replace(/__BUILD__/g, String(Date.now())) : buf;
+      res.writeHead(200, { 'Content-Type': TYPES[path.extname(file)] || 'application/octet-stream', 'Cache-Control': 'no-store' }).end(body);
     });
   });
   server.on('error', (e) => log('Arayüz sunucusu başlatılamadı:', e.message));
@@ -154,7 +163,7 @@ async function main() {
   process.on('SIGINT', stop);
   process.on('SIGTERM', stop);
 
-  log(`Tesla ilan takip ajanı başladı (${RUNNER}).`);
+  log(`Tesla ilan takip ajanı başladı (${RUNNER}, sürüm ${new Date(VERSION * 1000).toISOString().slice(0, 16)}).`);
   try { latestDb = (await openStore().load()).db; } catch (e) { log('Veri okunamadı:', e.message); }
   startServer();
   startUi();
@@ -165,7 +174,7 @@ async function main() {
     const due = sources.filter((s) => Date.now() - (lastRun[s] || 0) >= (minIntervals[s] ?? intervalMinutes) * 60000 - 5000);
     if (due.length) {
       await serial(async () => {
-        const res = await runCycle({ mode: 'auto', sources: due, runner: RUNNER });
+        const res = await runCycle({ mode: 'auto', sources: due, runner: RUNNER, codeVersion: VERSION });
         if (res?.db) latestDb = res.db;
       });
       due.forEach((s) => { lastRun[s] = Date.now(); });

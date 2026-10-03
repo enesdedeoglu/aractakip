@@ -68,6 +68,8 @@ jobs:
         run: |
           mkdir -p _site/data
           cp -r web/* _site/
+          # Tarayıcı önbelleği eski app.js/styles.css'i kullanmasın
+          sed -i "s/__BUILD__/${GITHUB_SHA::8}/g" _site/index.html
           if [ -f data/db.json ]; then cp data/db.json _site/data/db.json; fi
           # Android Firefox'a tarayıcıdan kurulabilsin diye eklenti paketi de yayınlanır
           sh scripts/build-firefox.sh _site/aractakip-firefox.xpi

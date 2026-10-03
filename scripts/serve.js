@@ -17,6 +17,6 @@ http.createServer((req, res) => {
   fs.readFile(file, (err, buf) => {
     if (err) { res.writeHead(404).end('bulunamadı'); return; }
     res.writeHead(200, { 'Content-Type': TYPES[path.extname(file)] || 'application/octet-stream', 'Cache-Control': 'no-store' });
-    res.end(buf);
+    res.end(file.endsWith('index.html') ? buf.toString().replace(/__BUILD__/g, String(Date.now())) : buf);
   });
 }).listen(PORT, () => console.log(`Arayüz: http://localhost:${PORT}`));

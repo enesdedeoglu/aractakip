@@ -6,7 +6,7 @@
   <title>Tesla İlan Takip</title>
   <meta name="description" content="sahibinden, arabam.com, Otokoç ve Borusan Next'teki tüm Tesla ilanları: kategoriler, piyasa analizi ve tavsiyeler.">
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23e82127'/%3E%3Cpath d='M6 10c6-3 14-3 20 0l-1.5 2c-1.6-.6-3.2-1-4.8-1.2L16 26l-3.7-15.2c-1.6.2-3.2.6-4.8 1.2z' fill='white'/%3E%3C/svg%3E">
-  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="styles.css?v=__BUILD__">
 </head>
 <body>
   <header class="topbar">
@@ -75,7 +75,14 @@
           </div>
         </aside>
         <div class="results">
-          <div class="result-head"><span id="count"></span></div>
+          <div class="result-head">
+            <span id="count"></span>
+            <label class="switch" title="Ağır hasar kaydı olan ilanları listeden çıkarır">
+              <input type="checkbox" id="hideHeavy" checked>
+              <span class="track"><span class="knob"></span></span>
+              Ağır hasar kayıtlıları gizle <small id="heavyCount"></small>
+            </label>
+          </div>
           <div class="grid" id="grid"></div>
           <button class="btn more" id="more" type="button" hidden>Daha fazla göster</button>
         </div>
@@ -115,6 +122,6 @@
   </main>
 
   <div class="toasts" id="toasts" aria-live="polite"></div>
-  <script src="app.js"></script>
+  <script src="app.js?v=__BUILD__"></script>
 </body>
 </html>

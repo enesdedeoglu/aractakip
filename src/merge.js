@@ -25,6 +25,7 @@ export function mergeScans(db, scans, now = new Date()) {
     const run = ((st.runs ||= {})[s.runner] ||= {});
     run.lastRun = t;
     run.ok = s.ok;
+    if (s.v) run.v = s.v;
     run.error = s.ok ? null : s.error;
     // Erişim engeli, onu gören cihaza (runner) özel tutulur
     if (s.blockedUntil) {
