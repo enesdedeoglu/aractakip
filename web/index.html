@@ -29,6 +29,7 @@
   <nav class="tabs" role="tablist">
     <button role="tab" class="tab active" data-tab="listings">İlanlar</button>
     <button role="tab" class="tab" data-tab="market">Piyasa</button>
+    <button role="tab" class="tab" data-tab="archive">Arşiv</button>
     <button role="tab" class="tab" data-tab="feed">Akış</button>
   </nav>
 
@@ -110,6 +111,28 @@
           <li><b>Etiketler:</b> 🔥 Fırsat (≥72), 👍 İyi fiyat (58-71), ⚖️ Piyasa (42-57), 💸 Pahalı (&lt;42), ⚠️ Şüpheli (piyasanın %25+ altında, bireysel satıcı).</li>
           <li>Bu bir istatistiksel tahmindir, yatırım tavsiyesi değildir. Almadan önce mutlaka ekspertiz ve batarya sağlığı (SOH) testi yaptırın.</li>
         </ul>
+      </div>
+    </section>
+
+    <section id="tab-archive" class="tabpane">
+      <div class="panel">
+        <div class="panel-head">
+          <h2>Yayından kalkan ilanlar</h2>
+          <div class="arch-filters">
+            <select id="archModel"><option value="">Tüm modeller</option></select>
+            <select id="archDays">
+              <option value="30">Son 30 gün</option>
+              <option value="90" selected>Son 90 gün</option>
+              <option value="365">Son 1 yıl</option>
+            </select>
+            <input id="archQ" type="search" placeholder="ara…">
+          </div>
+        </div>
+        <p class="hint">Tam taramalarda artık görülmeyen ilanlar (satılmış ya da satıcı tarafından kaldırılmış olabilir). Aynı araç yeniden ilana konduysa bağlantısı gösterilir.</p>
+        <div class="table-wrap"><table class="seg" id="archSummary"></table></div>
+      </div>
+      <div class="panel">
+        <div class="table-wrap"><table class="seg arch" id="archTable"></table></div>
       </div>
     </section>
 

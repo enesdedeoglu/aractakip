@@ -74,7 +74,7 @@ export async function runCycle({ mode = 'auto', sources, runner = 'local', dry =
     if (dry) return { db: work, changes };
 
     const heartbeatDue = Date.now() - Date.parse(db.savedAt || 0) > 55 * MIN;
-    const dupChanged = (db.dupGroups ?? null) !== (work.dupGroups ?? null);
+    const dupChanged = (db.dupGroups ?? null) !== (work.dupGroups ?? null) || (db.relists ?? null) !== (work.relists ?? null);
     // Cihazlar arası zamanlama ortak kayda dayanıyor: tam tarama bittiyse veya kayıttaki son tarama
     // zamanı 10 dakikadan eskiyse, ilanlarda değişiklik olmasa da kaydet
     const timingDue = scans.some((s) => s.ok && (

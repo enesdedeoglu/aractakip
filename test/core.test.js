@@ -117,3 +117,20 @@ test('sahibinden ağır hasar listesi: listedekiler kayıtlı, diğerleri kaydı
   assert.ok(db.sources.sahibinden.lastHeavy);
   assert.ok(c.updated >= 1);
 });
+
+import { findRelists } from '../src/dedupe.js';
+
+test('kaldırılıp yeniden ilana konan araç eşleşir ve fiyat geçmişi birleşir', () => {
+  const base = { title: 'HATASIZ BOYASIZ TESLA MODEL Y RWD 2024 32.150 KM', modelRaw: 'Tesla Model Y RWD', year: 2024, city: 'İstanbul', color: 'Beyaz' };
+  const old = { ...base, key: 'sahibinden:1', source: 'sahibinden', sourceId: '1300000001', status: 'removed', km: 32150, price: 2600000,
+    firstSeen: '2026-09-01T00:00:00Z', removedAt: '2026-09-20T00:00:00Z', priceHistory: [{ t: '2026-09-01T00:00:00Z', p: 2700000 }, { t: '2026-09-10T00:00:00Z', p: 2600000 }] };
+  const relist = { ...base, key: 'sahibinden:2', source: 'sahibinden', sourceId: '1300000002', status: 'active', km: 32400, price: 2500000,
+    firstSeen: '2026-09-22T00:00:00Z', priceHistory: [{ t: '2026-09-22T00:00:00Z', p: 2500000 }] };
+  const other = { ...base, key: 'sahibinden:3', source: 'sahibinden', sourceId: '1300000003', status: 'active', km: 80000, price: 2100000, firstSeen: '2026-09-22T00:00:00Z', title: 'farklı araç' };
+  for (const l of [old, relist, other]) l.c = classify(l);
+  assert.equal(findRelists([old, relist, other]), 1);
+  assert.equal(relist.relistOf, 'sahibinden:1');
+  assert.equal(old.relistedAs, 'sahibinden:2');
+  assert.deepEqual(relist.vehicleHistory.map((h) => h.p), [2700000, 2600000, 2500000]);
+  assert.equal(other.relistOf, undefined);
+});

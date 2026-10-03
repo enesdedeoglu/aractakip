@@ -178,6 +178,7 @@
     renderFilterChips();
     renderGrid();
     renderMarket();
+    renderArchive();
     renderFeed();
   }
 
@@ -317,7 +318,8 @@
         ${otherHtml}
         <div class="advice">${esc(a.advice || '')}</div>
         ${why ? `<ul class="why">${why}</ul>` : ''}
-        ${sparkline(l.priceHistory)}
+        ${sparkline(l.vehicleHistory || l.priceHistory)}
+        ${relistLine(l)}
         <div class="foot"><span>İlk görülme: ${ago(l.firstSeen)}</span><span>${a.daysOnMarket != null ? `${a.daysOnMarket} gündür ilanda` : ''}</span></div>
       </div>`;
     return c;
@@ -366,6 +368,64 @@
       <tbody>${segs.map((s) => `<tr><td>${esc(s.model)}</td><td>${esc(s.generation)}</td><td>${esc(s.trim)}</td><td class="num">${s.count}</td><td class="num">${tl(s.medianPrice)}</td><td class="num">${tl(s.minPrice)}</td><td class="num">${s.medianKm != null ? Math.round(s.medianKm).toLocaleString('tr-TR') : '—'}</td><td>${s.years ? (s.years[0] === s.years[1] ? s.years[0] : `${s.years[0]}–${s.years[1]}`) : '—'}</td><td class="num">${s.new7d}</td></tr>`).join('')}</tbody>`;
   }
 
+  // ---------- Yeniden ilan & arşiv ----------
+  const daysBetween = (a, b) => Math.max(0, Math.round((Date.parse(b) - Date.parse(a)) / DAY));
+  const listedFrom = (l) => l.publishedAt || l.firstSeen;
+
+  function relistLine(l) {
+    const prev = l.relistOf && state.db.listings[l.relistOf];
+    if (!prev) return '';
+    const d = l.price - prev.price;
+    const chg = d ? ` · fiyat ${tl(prev.price)} → ${tl(l.price)} (<span class="${d < 0 ? 'chg-down' : 'chg-up'}">${d < 0 ? '▼' : '▲'} %${Math.abs((d / prev.price) * 100).toFixed(1)}</span>)` : ' · aynı fiyat';
+    return `<div class="relist">↻ Yeniden ilan: önceki ilanı ${daysBetween(prev.removedAt, listedFrom(l))} gün önce kalkmıştı (${SOURCE_NAMES[prev.source]}, ${daysBetween(listedFrom(prev), prev.removedAt)} gün ilanda)${chg}</div>`;
+  }
+
+  function median(a) { const s = a.filter((x) => x != null).sort((x, y) => x - y); return s.length ? s[Math.floor(s.length / 2)] : null; }
+
+  function renderArchive() {
+    const days = +$('#archDays').value || 90;
+    const model = $('#archModel').value;
+    const q = $('#archQ').value.trim().toLocaleLowerCase('tr-TR');
+    const removedAll = state.listings.filter((l) => l.status === 'removed' && Date.now() - Date.parse(l.removedAt) < days * DAY);
+    const models = MODEL_ORDER.filter((m) => removedAll.some((l) => l.c.model === m));
+    const sel = $('#archModel');
+    const cur = sel.value;
+    sel.innerHTML = '<option value="">Tüm modeller</option>' + models.map((m) => `<option ${m === cur ? 'selected' : ''}>${m}</option>`).join('');
+    const rows = removedAll.filter((l) => (!model || l.c.model === model) &&
+      (!q || `${l.title} ${l.city} ${l.c.segment}`.toLocaleLowerCase('tr-TR').includes(q)))
+      .sort((a, b) => Date.parse(b.removedAt) - Date.parse(a.removedAt));
+
+    // Model/versiyon bazında özet: kaç ilan kalktı, ortalama kaç günde, son fiyatlar
+    const groups = new Map();
+    for (const l of rows) {
+      const k = `${l.c.model} · ${l.c.generation} · ${l.c.trim}`;
+      if (!groups.has(k)) groups.set(k, []);
+      groups.get(k).push(l);
+    }
+    $('#archSummary').innerHTML = rows.length
+      ? `<thead><tr><th>Segment</th><th class="num">Kalkan</th><th class="num">Medyan ilanda kalma</th><th class="num">Medyan son fiyat</th><th class="num">İlk→son fiyat (medyan)</th><th class="num">Yeniden ilana konan</th></tr></thead><tbody>${
+        [...groups.entries()].sort((a, b) => b[1].length - a[1].length).map(([k, ls]) => {
+          const chg = median(ls.map((l) => { const h = l.priceHistory || []; return h.length ? ((l.price - h[0].p) / h[0].p) * 100 : null; }));
+          return `<tr><td>${esc(k)}</td><td class="num">${ls.length}</td><td class="num">${median(ls.map((l) => daysBetween(listedFrom(l), l.removedAt)))} gün</td><td class="num">${tl(median(ls.map((l) => l.price)))}</td><td class="num">${chg == null ? '—' : `${chg > 0 ? '+' : ''}${chg.toFixed(1)}%`}</td><td class="num">${ls.filter((l) => l.relistedAs).length}</td></tr>`;
+        }).join('')}</tbody>`
+      : '<tbody><tr><td>Bu dönemde kalkan ilan yok. İlanların kalktığı, tam taramalarda artık görülmemesiyle anlaşılır (sahibinden günde bir taranır).</td></tr></tbody>';
+
+    $('#archTable').innerHTML = rows.length ? `<thead><tr><th>Kalktı</th><th>Araç</th><th>Kaynak</th><th class="num">İlk fiyat</th><th class="num">Son fiyat</th><th class="num">İlanda</th><th>Sonra</th></tr></thead><tbody>${rows.slice(0, 400).map((l) => {
+      const first = (l.priceHistory || [])[0]?.p ?? l.price;
+      const d = l.price - first;
+      const next = l.relistedAs && state.db.listings[l.relistedAs];
+      return `<tr>
+        <td>${new Date(l.removedAt).toLocaleDateString('tr-TR')}<br><small>${ago(l.removedAt)}</small></td>
+        <td class="car"><a href="${esc(l.url)}" target="_blank" rel="noopener">${esc(l.c.model)} ${esc(l.c.trim)} ${l.year || ''}</a><br><small>${kmFmt(l.km)} · ${esc(l.city || '')} · ${esc(l.title.slice(0, 50))}</small></td>
+        <td>${SOURCE_NAMES[l.source]}<br><small>${SELLER_NAMES[l.sellerType] || ''}</small></td>
+        <td class="num">${tl(first)}</td>
+        <td class="num">${tl(l.price)}${d ? `<br><small class="${d < 0 ? 'chg-down' : 'chg-up'}">${d < 0 ? '▼' : '▲'} %${Math.abs((d / first) * 100).toFixed(1)}</small>` : ''}</td>
+        <td class="num">${daysBetween(listedFrom(l), l.removedAt)} gün</td>
+        <td>${next ? `<a href="${esc(next.url)}" target="_blank" rel="noopener">↻ yeniden ilan</a><br><small>${SOURCE_NAMES[next.source]} ${tl(next.price)}${next.status === 'removed' ? ' (o da kalktı)' : ''}</small>` : '<small>satıldı / kaldırıldı</small>'}</td>
+      </tr>`;
+    }).join('')}</tbody>` : '';
+  }
+
   // ---------- Akış ----------
   function renderFeed() {
     const evs = (state.db.events || []).slice(0, 150);
@@ -376,7 +436,8 @@
       const name = `${l.c.model} ${l.c.trim} ${l.year || ''}`;
       let txt;
       const also = (l.dup?.members || []).filter((k) => k !== l.key).map((k) => SOURCE_NAMES[state.db.listings[k]?.source]).filter(Boolean);
-      if (e.type === 'new') txt = `<a href="${esc(l.url)}" target="_blank" rel="noopener">${esc(name)}</a> eklendi · ${tl(l.priceHistory?.[0]?.p ?? l.price)} · ${SOURCE_NAMES[l.source]} · ${LABEL_EMOJI[l.a?.label] || ''} ${esc(l.a?.label)}${also.length ? ` · <small>aynı araç ${also.join(', ')}'da da var</small>` : ''}`;
+      if (e.type === 'new' && l.relistOf && state.db.listings[l.relistOf]) txt = `<a href="${esc(l.url)}" target="_blank" rel="noopener">${esc(name)}</a> yeniden ilana kondu · ${tl(state.db.listings[l.relistOf].price)} → ${tl(l.priceHistory?.[0]?.p ?? l.price)} · ${SOURCE_NAMES[l.source]}`;
+      else if (e.type === 'new') txt = `<a href="${esc(l.url)}" target="_blank" rel="noopener">${esc(name)}</a> eklendi · ${tl(l.priceHistory?.[0]?.p ?? l.price)} · ${SOURCE_NAMES[l.source]} · ${LABEL_EMOJI[l.a?.label] || ''} ${esc(l.a?.label)}${also.length ? ` · <small>aynı araç ${also.join(', ')}'da da var</small>` : ''}`;
       else if (e.type === 'price') txt = `<a href="${esc(l.url)}" target="_blank" rel="noopener">${esc(name)}</a> fiyatı ${tl(e.from)} → <b>${tl(e.to)}</b> (${e.to < e.from ? '▼' : '▲'} %${Math.abs(((e.to - e.from) / e.from) * 100).toFixed(1)}) · ${SOURCE_NAMES[l.source]}`;
       else if (e.type === 'removed') txt = `<a href="${esc(l.url)}" target="_blank" rel="noopener">${esc(name)}</a> ilanı kalktı (satıldı olabilir) · son fiyat ${tl(l.price)}`;
       else txt = `<a href="${esc(l.url)}" target="_blank" rel="noopener">${esc(name)}</a> tekrar yayında · ${tl(l.price)}`;
@@ -431,6 +492,8 @@
   $('#more').addEventListener('click', () => { state.shown += PAGE; renderGrid(); });
   $('#toggleFilters').addEventListener('click', () => $('#filters').classList.toggle('open'));
   $('#scatterModel').addEventListener('change', renderMarket);
+  for (const id of ['#archModel', '#archDays']) $(id).addEventListener('change', renderArchive);
+  $('#archQ').addEventListener('input', renderArchive);
 
   const nb = $('#notifyBtn');
   function syncNotifyBtn() {

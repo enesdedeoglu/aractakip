@@ -30,11 +30,15 @@ export function buildAlert(db, changes, alerts) {
   const recent = (l) => !l.publishedAt || Date.now() - Date.parse(l.publishedAt) < 3 * 86400000;
   // Zaten bilinen bir aracın başka sitede de ilana çıkması "yeni araç" değildir
   const knownCar = (l) => l.dup && l.dup.members.some((k) => k !== l.key && db.listings[k] && Date.parse(db.listings[k].firstSeen) < Date.parse(l.firstSeen));
-  const added = [...changes.added.map(get).filter((l) => l && recent(l) && !knownCar(l)), ...changes.returned.map(get)]
+  // Kaldırılıp yeniden ilana konan araç yeni değildir; fiyatı düştüyse fiyat düşüşü olarak bildirilir
+  const relistDrops = changes.added.map(get)
+    .filter((l) => l?.relistOf && get(l.relistOf) && l.price < get(l.relistOf).price && passesAlertFilter(l, alerts))
+    .map((l) => ({ key: l.key, from: get(l.relistOf).price, to: l.price, l, relist: true }));
+  const added = [...changes.added.map(get).filter((l) => l && recent(l) && !knownCar(l) && !l.relistOf), ...changes.returned.map(get)]
     .filter((l) => passesAlertFilter(l, alerts))
     .sort((a, b) => (b.a?.score ?? 0) - (a.a?.score ?? 0));
   const prices = alerts.notifyPriceDrops
-    ? changes.priceChanged.map((c) => ({ ...c, l: get(c.key) })).filter((c) => c.l && passesAlertFilter(c.l, alerts))
+    ? [...changes.priceChanged.map((c) => ({ ...c, l: get(c.key) })).filter((c) => c.l && passesAlertFilter(c.l, alerts)), ...relistDrops]
     : [];
   const removed = alerts.notifyRemoved ? changes.removed.map(get).filter((l) => passesAlertFilter(l, alerts)) : [];
   return { added, prices, removed, db, empty: !added.length && !prices.length && !removed.length };
@@ -94,7 +98,7 @@ export function emailHtml(alert) {
   return `<div style="max-width:640px;margin:auto">
     <h2 style="font-family:Arial,sans-serif">Tesla İlan Takip</h2>
     ${sec(`Yeni ilanlar (${alert.added.length})`, alert.added.map((l) => card(l, '', alert.db)).join(''))}
-    ${sec(`Fiyat değişimleri (${alert.prices.length})`, alert.prices.map((p) => card(p.l, `<span style="font-size:13px;color:${p.to < p.from ? '#0a7d32' : '#c0182b'}">(${p.to < p.from ? '▼' : '▲'} ${tl(Math.abs(p.to - p.from))}, önce ${tl(p.from)})</span>`, alert.db)).join(''))}
+    ${sec(`Fiyat değişimleri (${alert.prices.length})`, alert.prices.map((p) => card(p.l, `<span style="font-size:13px;color:${p.to < p.from ? '#0a7d32' : '#c0182b'}">(${p.to < p.from ? '▼' : '▲'} ${tl(Math.abs(p.to - p.from))}, önce ${tl(p.from)}${p.relist ? ', yeniden ilan' : ''})</span>`, alert.db)).join(''))}
     ${sec(`Kalkan ilanlar (${alert.removed.length})`, alert.removed.map((l) => card(l, '<span style="font-size:13px;color:#666">(satıldı / kaldırıldı)</span>')).join(''))}
     ${site ? `<p style="font-family:Arial,sans-serif"><a href="${esc(site)}">Tüm ilanları ve piyasa analizini aç →</a></p>` : ''}
     <p style="font-family:Arial,sans-serif;color:#999;font-size:11px">Fiyat tahminleri ilan verilerine dayanan istatistiksel bir modeldir; yatırım tavsiyesi değildir. Ekspertiz yaptırmadan araç almayın.</p>

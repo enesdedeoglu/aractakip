@@ -107,3 +107,61 @@ export function groupDamage(l, byKey) {
   }
   return out;
 }
+
+/**
+ * Yeniden ilan tespiti: kaldırılan bir ilanın aracı (aynı veya başka sitede) yeniden ilana konduysa bağlar.
+ * Yeni ilana l.relistOf ve araç bazında birleşik fiyat geçmişi (l.vehicleHistory) yazılır.
+ * Fiyat değişmiş olabileceği için %12'ye kadar fiyat farkına, km'nin biraz artmasına izin verilir.
+ */
+export function findRelists(listings) {
+  const DAY = 86400000;
+  for (const l of listings) { delete l.relistOf; delete l.relistedAs; delete l.vehicleHistory; }
+  const removed = listings.filter((l) => l.status === 'removed' && l.c && l.km != null && l.price && l.year);
+  const fresh = listings.filter((l) => l.status === 'active' && l.c && l.km != null && l.price && l.year);
+  const pairs = [];
+  for (const a of fresh) {
+    const ta = tokens(a.title);
+    for (const r of removed) {
+      const gap = Date.parse(a.publishedAt || a.firstSeen) - Date.parse(r.removedAt); // sitedeki yayın tarihi
+      // Yeni ilan, eskisi kalktıktan sonra (en fazla 12 saat önce) açılmış olmalı; daha önceden açık olan
+      // ilan aynı aracın başka sitedeki paralel ilanıdır, yeniden ilan değil
+      if (gap < -DAY / 2 || gap > 60 * DAY) continue;
+      if (a.c.model !== r.c.model || a.c.generation !== r.c.generation || a.year !== r.year) continue;
+      if (a.city && r.city && lc(a.city).split(/\s/)[0] !== lc(r.city).split(/\s/)[0]) continue;
+      if (a.color && r.color && lc(a.color) !== lc(r.color)) continue;
+      if (a.c.trim !== r.c.trim && a.c.trim !== 'Belirsiz' && r.c.trim !== 'Belirsiz') continue;
+      const dkm = a.km - r.km;
+      if (dkm < -500 || dkm > Math.max(3000, 0.05 * r.km)) continue;
+      const dp = Math.abs(a.price - r.price) / r.price;
+      if (dp > 0.12) continue;
+      let score = 0;
+      score += dkm === 0 ? (a.km % 1000 === 0 ? 1 : 3) : 0.5;
+      const sim = jaccard(ta, tokens(r.title));
+      if (sim >= 0.6) score += 3; else if (sim >= 0.35) score += 1.5;
+      if (dp === 0) score += 1;
+      if (a.source === r.source && a.sellerType === r.sellerType) score += 0.5;
+      if (a.district && r.district && lc(a.district) === lc(r.district)) score += 1;
+      if (score >= 4) pairs.push([score, a, r]);
+    }
+  }
+  pairs.sort((x, y) => y[0] - x[0]);
+  const used = new Set();
+  let n = 0;
+  for (const [, a, r] of pairs) {
+    if (used.has(a.key) || used.has(r.key)) continue;
+    used.add(a.key); used.add(r.key);
+    a.relistOf = r.key;
+    r.relistedAs = a.key;
+    n++;
+  }
+  // Araç bazında fiyat geçmişi: önceki ilan zinciri + bu ilan
+  const byKey = Object.fromEntries(listings.map((l) => [l.key, l]));
+  for (const a of fresh) {
+    if (!a.relistOf) continue;
+    const chain = [];
+    let cur = a;
+    for (let i = 0; cur && i < 5; i++) { chain.unshift(cur); cur = byKey[cur.relistOf]; }
+    a.vehicleHistory = chain.flatMap((x) => (x.priceHistory || []).map((h) => ({ ...h, src: x.source, key: x.key })));
+  }
+  return n;
+}

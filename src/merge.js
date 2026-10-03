@@ -1,10 +1,10 @@
 // Tarama sonuçlarını veritabanına işler; yeni / fiyat değişimi / kalkan ilanları tespit eder.
 import { classify } from './classify.js';
 import { buildMarket, analyzeListing, marketSummary } from './analyze.js';
-import { findDuplicates, groupDamage } from './dedupe.js';
+import { findDuplicates, groupDamage, findRelists } from './dedupe.js';
 
 const HOUR = 3600000;
-const KEEP_REMOVED_DAYS = 120;
+const KEEP_REMOVED_DAYS = 365; // arşiv: kaldırılan ilanlar 1 yıl saklanır
 const MAX_EVENTS = 500;
 
 export const keyOf = (l) => `${l.source}:${l.sourceId}`;
@@ -86,12 +86,14 @@ export function mergeScans(db, scans, now = new Date()) {
       if (wasRemoved) changes.returned.push(key);
     }
 
-    // Tam tarama: listede olmayanları "kalktı" say (2 tam taramada görülmezse ve 6 saattir yoksa)
+    // Tam tarama: listede olmayanları "kalktı" say — 2 tam taramada görülmezse ve 6 saattir yoksa,
+    // ya da (günde bir taranan siteler için) 1 tam taramada görülmeyip 24 saattir hiç görünmediyse
     if (s.complete) {
       for (const l of Object.values(db.listings)) {
         if (l.source !== s.source || l.status !== 'active' || seen.has(l.key)) continue;
         l.missCount = (l.missCount || 0) + 1;
-        if (l.missCount >= 2 && now - Date.parse(l.lastSeen) > 6 * HOUR) {
+        const quiet = now - Date.parse(l.lastSeen);
+        if ((l.missCount >= 2 && quiet > 6 * HOUR) || quiet > 24 * HOUR) {
           l.status = 'removed';
           l.removedAt = t;
           changes.removed.push(l.key);
@@ -145,6 +147,7 @@ export function recompute(db) {
   for (const l of all) l.c = classify(l);
   // Farklı sitelerdeki aynı aracı eşleştir; piyasa modeli ve karşılaştırmalar her aracı bir kez saysın
   db.dupGroups = findDuplicates(all);
+  db.relists = findRelists(all);
   const unique = all.filter((l) => !l.dup || l.dup.primary);
   const market = buildMarket(unique);
   for (const l of all) {
