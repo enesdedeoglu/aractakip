@@ -4,7 +4,7 @@
 // açılacağına ve sayfaların nasıl işleneceğine burada karar verilir.
 import { parseList as parseArabamList, parseDetail as parseArabamDetail, kmFromTitle } from './sources/arabam.js';
 import { parseNextData as parseBorusan, toListing as borusanListing } from './sources/borusan.js';
-import { normalize as normalizeSahibinden, pickImage } from './sources/sahibinden.js';
+import { normalize as normalizeSahibinden, pickImage, isFakeRow } from './sources/sahibinden.js';
 import { log } from './util.js';
 
 const MIN = 60000;
@@ -162,7 +162,9 @@ export function createBridge({ onScan, needDetail, onChallenge, shared = () => (
         }
         done();
         if (rows.length && !normalizeSahibinden([pg]).length) log('sahibinden: satırlar ayrıştırılamadı, başlıklar:', heads);
-        const noImg = rows.filter((r) => !pickImage(r) && !/iconHasMegaPhoto|otherNoImage/.test(r.image || ''));
+        const fakes = rows.filter(isFakeRow).length;
+        if (fakes) log(`sahibinden: ${fakes} sahte (tuzak) ilan ayıklandı`);
+        const noImg = rows.filter((r) => !isFakeRow(r) && !pickImage(r) && !/iconHasMegaPhoto|otherNoImage/.test(r.image || ''));
         if (noImg.length && !loggedNoImg++) log(`sahibinden: ${noImg.length} satırda fotoğraf bulunamadı, örnek:`, JSON.stringify({ id: noImg[0].id, image: noImg[0].image, images: noImg[0].images, imgHtml: noImg[0].imgHtml }).slice(0, 900));
         return onScan({ source: 'sahibinden', listings: normalizeSahibinden([pg]), complete: false, mode: 'quick' });
       }

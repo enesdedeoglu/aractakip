@@ -29,7 +29,7 @@ test('başlıktan km', () => {
 test('sahibinden satırı', () => {
   const heads = ['', 'Seri', 'Model', 'İlan Başlığı', 'Yıl', 'KM', 'Renk', 'Fiyat', 'İlan Tarihi', 'İl / İlçe', ''];
   const vals = ['', 'Model Y', 'Performance (Legacy)', 'TESLA', '2023', '33.233', 'Beyaz', '2.400.000 TL', '02 Ekim\n2026', 'İstanbul\nBağcılar', ''];
-  const [l] = normalize([{ url: 'https://www.sahibinden.com/tesla', heads, rows: [{ id: '1', cells: vals.map((text) => ({ cls: '', text })) }] }]);
+  const [l] = normalize([{ url: 'https://www.sahibinden.com/tesla', heads, rows: [{ id: '1315099562', cells: vals.map((text) => ({ cls: '', text })) }] }]);
   assert.equal(l.year, 2023);
   assert.equal(l.km, 33233);
   assert.equal(l.price, 2400000);
@@ -81,4 +81,16 @@ test('sahibinden: simge yerine araç fotoğrafı seçilir', () => {
   assert.equal(pickImage({ image: icon, images: [icon, 'https://i0.shbdn.com/photos/09/95/62/lthmb_1315099562zn3.jpg'] }), 'https://i0.shbdn.com/photos/09/95/62/x5_1315099562zn3.jpg');
   assert.equal(pickImage({ image: icon }), null);
   assert.match(pickImage({ image: 'https://image5.sahibinden.com/primeRow/72/44/36/pr_thmb_1340724436vbb.jpg' }), /primeRow/);
+});
+
+import { isFakeRow } from '../src/sources/sahibinden.js';
+
+test('sahibinden: sahte (tuzak) ilanlar ayıklanır', () => {
+  const heads = ['', 'Seri', 'Model', 'İlan Başlığı', 'Yıl', 'KM', 'Renk', 'Fiyat', 'İlan Tarihi', 'İl / İlçe', ''];
+  const cells = ['', 'Model Y', 'RWD (Legacy)', 'x', '2024', '38.000', 'Beyaz', '3.159.000 TL', '02 Ekim\n2026', 'İstanbul\nBaşakşehir', ''].map((text) => ({ cls: '', text }));
+  const fake = { id: '846782393', href: '/ilan/vasita-otomobil-tesla-otomatik-sb2f-bol-ekstrali-masrafsiz-tesla-acil-elektrik-846782393/detay', cells };
+  const real = { id: '1343683453', href: '/ilan/vasita-otomobil-tesla-2023-tesla-model-y-performance-1343683453/detay', cells };
+  assert.ok(isFakeRow(fake));
+  assert.ok(!isFakeRow(real));
+  assert.deepEqual(normalize([{ url: 'https://www.sahibinden.com/tesla', heads, rows: [fake, real] }]).map((l) => l.sourceId), ['1343683453']);
 });

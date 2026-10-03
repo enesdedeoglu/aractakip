@@ -50,7 +50,7 @@ function toListing(r, heads) {
     district: rest.join(' ') || null,
     sellerType: r.store ? 'galeri' : 'sahibinden',
     image: pickImage(r),
-    // "Megafotolu" vitrin ilanlarında sahibinden listede küçük fotoğraf göstermiyor (yalnızca ilan sayfasında)
+    // Listede küçük fotoğrafı olmayan ilan (fotoğraflar yalnızca ilan sayfasında)
     megaPhoto: !pickImage(r) && /iconHasMegaPhoto|otherNoImage|Megafotolu/i.test(`${r.image || ''} ${(r.images || []).join(' ')} ${r.imgHtml || ''}`) ? true : undefined,
     color: byHead('renk'),
     publishedAt: parseTrDate((dateTxt || '').replace(/(\d{1,2})\s+(\S+)\s+(\d{4}).*/s, '$1 $2 $3')),
@@ -61,11 +61,17 @@ function toListing(r, heads) {
 /**
  * @param pages [{ url, heads: string[], rows: [{id, href, title, image, store, cells:[{cls,text}]}] }]
  */
+// sahibinden şüpheli ziyaretçilere sahte (tuzak) ilanlar karıştırıyor: 9 haneli numara, adreste "sb2f" işareti,
+// rastgele kalıp başlıklar ve fotoğraf yok. Gerçek ilan numaraları 10 hanelidir.
+export function isFakeRow(r) {
+  return !/^\d{10,}$/.test(String(r.id || '')) || /-sb2f-/i.test(r.href || '');
+}
+
 export function normalize(pages) {
   const out = new Map();
   for (const p of pages) {
     for (const r of p.rows || []) {
-      if (!r.id) continue;
+      if (!r.id || isFakeRow(r)) continue;
       const l = toListing(r, p.heads || []);
       // Yalnızca Tesla (marka sayfası dışında arama yapılırsa diye)
       if (!/tesla/i.test(`${l.modelRaw} ${l.title} ${p.url}`)) continue;
