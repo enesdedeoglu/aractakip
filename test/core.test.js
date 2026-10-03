@@ -105,3 +105,15 @@ test('ağır hasar kaydı durumu', () => {
   assert.equal(heavyStatus({ damage: { tramerRecord: false } }), 'yok');
   assert.equal(heavyStatus({ damage: { tramer: null } }), 'bilinmiyor');
 });
+
+test('sahibinden ağır hasar listesi: listedekiler kayıtlı, diğerleri kaydı yok', () => {
+  const db = emptyDb();
+  const mk = (id) => ({ source: 'sahibinden', sourceId: id, title: 'Tesla Model Y', modelRaw: 'Tesla Model Y RWD', year: 2023, km: 30000, price: 2000000 });
+  mergeScans(db, [{ source: 'sahibinden', ok: true, complete: false, listings: [mk('1300000001'), mk('1300000002')], runner: 'tablet' }]);
+  const heavy = { ...mk('1300000002'), damage: { heavy: true } };
+  const c = mergeScans(db, [{ source: 'sahibinden', ok: true, complete: false, mode: 'heavy', listings: [heavy], heavyIds: ['1300000002'], heavyComplete: true, runner: 'tablet' }]);
+  assert.equal(db.listings['sahibinden:1300000002'].c.heavy, 'var');
+  assert.equal(db.listings['sahibinden:1300000001'].c.heavy, 'yok');
+  assert.ok(db.sources.sahibinden.lastHeavy);
+  assert.ok(c.updated >= 1);
+});

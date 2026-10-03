@@ -97,6 +97,18 @@ export function mergeScans(db, scans, now = new Date()) {
         }
       }
     }
+    // sahibinden "Ağır Hasar Kayıtlı: Evet" filtreli liste: tam geldiyse diğer ilanlar "kaydı yok"
+    if (s.mode === 'heavy') {
+      st.lastHeavy = t;
+      if (s.heavyComplete) {
+        const ids = new Set(s.heavyIds);
+        for (const l of Object.values(db.listings)) {
+          if (l.source !== s.source || l.status !== 'active') continue;
+          const want = ids.has(l.sourceId);
+          if (l.damage?.heavy !== want) { l.damage = { ...(l.damage || {}), heavy: want }; changes.updated++; }
+        }
+      }
+    }
     st.count = Object.values(db.listings).filter((l) => l.source === s.source && l.status === 'active').length;
   }
 

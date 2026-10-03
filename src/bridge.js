@@ -9,6 +9,8 @@ import { log } from './util.js';
 
 const MIN = 60000;
 const SAH = 'https://www.sahibinden.com/tesla?pagingSize=50&sorting=date_desc';
+// sahibinden arama filtresi "Ağır Hasar Kayıtlı: Evet" (a116445=1263353)
+const SAH_HEAVY = `${SAH}&a116445=1263353`;
 const ARB = 'https://www.arabam.com/ikinci-el/otomobil?searchText=tesla&take=50';
 const BOR = 'https://borusannext.com/araba-al/tesla';
 
@@ -23,7 +25,7 @@ const BOR = 'https://borusannext.com/araba-al/tesla';
  */
 export function createBridge({ onScan, needDetail, onChallenge, shared = () => ({}), runner = 'local', intervals = {} }) {
   const iv = {
-    sahibinden: 15, sahibindenFull: 1440,
+    sahibinden: 15, sahibindenFull: 1440, sahibindenHeavy: 720,
     arabam: 5, arabamFull: 120,
     borusan: 10,
     gap: 0.75,     // iki sayfa açılışı arasındaki en kısa süre (dk)
@@ -42,7 +44,7 @@ export function createBridge({ onScan, needDetail, onChallenge, shared = () => (
 
   // Görev zamanı geldi mi? Ortak kayıttaki son tarama (hangi cihaz yaptıysa) ve engel süresi de dikkate alınır.
   // Aralıklar ±%15 oynatılır ki istekler saat gibi düzenli olmasın.
-  const SOURCE_OF = { arabam: 'arabam', arabamFull: 'arabam', sahibinden: 'sahibinden', sahibindenFull: 'sahibinden', borusan: 'borusan' };
+  const SOURCE_OF = { arabam: 'arabam', arabamFull: 'arabam', sahibinden: 'sahibinden', sahibindenFull: 'sahibinden', sahibindenHeavy: 'sahibinden', borusan: 'borusan' };
   const jitter = {};
   const timeouts = {};
   const pausedUntil = {};
@@ -55,7 +57,7 @@ export function createBridge({ onScan, needDetail, onChallenge, shared = () => (
       const st = shared(src) || {};
       // Engel o siteyi engelli gören cihaza özel (ör. Mac'teki tarayıcı oturumu); eski ortak kayıt da geçerli
       if (Date.parse(st.blocks?.[runner]) > Date.now() || Date.parse(st.blockedUntil) > Date.now()) return false;
-      const at = Date.parse(task.endsWith('Full') ? st.lastFull : st.lastOk);
+      const at = Date.parse(task.endsWith('Full') ? st.lastFull : task.endsWith('Heavy') ? st.lastHeavy : st.lastOk);
       if (Number.isFinite(at) && Date.now() - at < span) { last[task] = at; return false; }
       // Sahiplik: siteyi başka bir cihaz düzenli tarıyorsa ona bırak; 3 tur taramazsa devral
       const okAt = Date.parse(st.lastOk);
@@ -111,6 +113,7 @@ export function createBridge({ onScan, needDetail, onChallenge, shared = () => (
     else if (due('sahibinden', iv.sahibinden)) pick = due('sahibindenFull', iv.sahibindenFull)
       ? (crawl = { source: 'sahibinden', pages: [], offset: 0, nextUrl: SAH, started: Date.now() }, { task: 'crawl', url: SAH })
       : { task: 'sahibinden', url: SAH };
+    else if (due('sahibindenHeavy', iv.sahibindenHeavy)) pick = { task: 'sahibindenHeavy', url: SAH_HEAVY };
     else if (due('borusan', iv.borusan)) pick = { task: 'borusan', url: BOR };
     else {
       // Aynı detay sayfası bir saat içinde tekrar istenmesin (kayıt henüz yazılmamış olabilir)
@@ -149,6 +152,13 @@ export function createBridge({ onScan, needDetail, onChallenge, shared = () => (
     try {
       if (host.endsWith('sahibinden.com') && rows) {
         const pg = { url, heads, rows };
+        if (task === 'sahibindenHeavy') {
+          // Ağır hasar kayıtlı ilan listesi: buradakiler "kayıtlı", tek sayfaya sığdıysa diğerleri "kaydı yok"
+          done();
+          const listings = normalizeSahibinden([pg]).map((l) => ({ ...l, damage: { ...l.damage, heavy: true } }));
+          const heavyComplete = rows.length < 50 && (!total || listings.length >= total * 0.9);
+          return onScan({ source: 'sahibinden', listings, complete: false, mode: 'heavy', heavyIds: listings.map((l) => l.sourceId), heavyComplete });
+        }
         if (task === 'crawl' && crawl?.source === 'sahibinden') {
           crawl.pages.push(pg);
           const more = rows.length >= 50 && crawl.offset + 50 < Math.min(total || 1000, 1000);
