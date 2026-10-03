@@ -553,7 +553,10 @@
     b.textContent = p ? '✉️ Mail durduruldu' : '✉️ Mail açık';
   }
 
-  function openMailDlg() {
+  async function openMailDlg(refresh = true) {
+    if (LOCAL && refresh) {
+      try { const r = await (await fetch('/api/prefs')).json(); if (r.ok) { state.db.prefs = r.prefs; renderMailBtn(); } } catch { /* yoksay */ }
+    }
     const p = mailPausedUntil();
     $('#mailState').innerHTML = p
       ? `Mail bildirimleri <b>durduruldu</b>${p === 'forever' ? ' (süresiz)' : ` – ${new Date(p).toLocaleString('tr-TR', { day: '2-digit', month: 'long', hour: '2-digit', minute: '2-digit' })}'e kadar`}. Bu sürede yeni ilan ve fiyat değişikliği maili gelmez; sitede her şey güncellenmeye devam eder.`
@@ -581,7 +584,7 @@
       if (!r.ok) throw new Error(r.error);
       state.db.prefs = r.prefs;
       renderMailBtn();
-      openMailDlg();
+      openMailDlg(false);
       toast(action === 'devam' ? 'Mail bildirimleri yeniden başladı.' : `Mail bildirimleri durduruldu (${duration}).`);
     } catch (e) {
       toast(`Değiştirilemedi: ${esc(e.message)}`);

@@ -124,6 +124,14 @@ const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; ch
 function startUi() {
   const server = http.createServer((req, res) => {
     const url = new URL(req.url, 'http://x').pathname;
+    if (url === '/api/prefs' && req.method === 'GET') {
+      // Mail ayarı başka yerden (GitHub/diğer cihaz) değişmiş olabilir: ortak kayıttan taze oku
+      openStore().load().then(({ db }) => {
+        if (latestDb) latestDb.prefs = db.prefs;
+        res.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify({ ok: true, prefs: db.prefs || {} }));
+      }).catch((e) => res.writeHead(500).end(JSON.stringify({ ok: false, error: e.message })));
+      return;
+    }
     if (url === '/api/mail' && req.method === 'POST') {
       let b = '';
       req.on('data', (c) => { b += c; if (b.length > 1000) req.destroy(); });
