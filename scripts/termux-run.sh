@@ -8,6 +8,6 @@ cd "$APP" || exit 1
 if pgrep -f "termux-run.sh" | grep -qv "^$$\$"; then echo "zaten çalışıyor"; exit 0; fi
 while true; do
   git pull -q --ff-only >/dev/null 2>&1 && npm install --omit=optional --no-audit --no-fund >/dev/null 2>&1
-  node src/agent.js >> "$LOG" 2>&1
-  sleep 30
+  ARACTAKIP_AUTOUPDATE=1 node src/agent.js >> "$LOG" 2>&1
+  sleep 10
 done

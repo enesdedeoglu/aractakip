@@ -8,6 +8,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import http from 'node:http';
+import { execFile } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { runCycle } from './run.js';
 import { loadSettings } from './settings.js';
@@ -129,6 +130,22 @@ function startUi() {
   server.listen(UI_PORT, '127.0.0.1', () => log(`Arayüz: http://127.0.0.1:${UI_PORT}`));
 }
 
+// Otomatik güncelleme (tablette): GitHub'da yeni kod varsa kapan; termux-run.sh kodu çekip yeniden başlatır
+function startAutoUpdate() {
+  if (process.env.ARACTAKIP_AUTOUPDATE !== '1') return;
+  const dir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+  setInterval(() => {
+    execFile('git', ['-C', dir, 'fetch', '-q', 'origin', 'main'], (err) => {
+      if (err) return;
+      execFile('git', ['-C', dir, 'diff', '--quiet', 'HEAD', 'origin/main', '--', 'src', 'package.json', 'config'], (changed) => {
+        if (!changed) return;
+        log('Yeni kod bulundu, güncellemek için yeniden başlatılıyor…');
+        serial(async () => { await closeContext(); try { fs.unlinkSync(LOCK); } catch {} process.exit(0); });
+      });
+    });
+  }, 30 * 60000);
+}
+
 const lastRun = {};
 
 async function main() {
@@ -141,6 +158,7 @@ async function main() {
   try { latestDb = (await openStore().load()).db; } catch (e) { log('Veri okunamadı:', e.message); }
   startServer();
   startUi();
+  startAutoUpdate();
   for (;;) {
     const { intervalMinutes, sources, minIntervals = {} } = loadSettings().agent;
     // Her kaynağın kendi en kısa tarama aralığı olabilir
