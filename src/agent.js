@@ -52,6 +52,7 @@ const bridge = createBridge({
   intervals: loadSettings().agent.extension,
   runner: RUNNER,
   version: VERSION,
+  primary: loadSettings().agent.primary,
   // Ortak kayıttaki zamanlama: başka cihaz taradıysa veya ajan yeniden başladıysa tekrar etme
   shared: (source) => latestDb?.sources?.[source] || {},
   onChallenge: (url, info = {}) => {

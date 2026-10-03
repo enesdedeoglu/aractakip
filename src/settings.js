@@ -9,6 +9,8 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const DEFAULTS = {
   repo: null,
   agent: {
+    // Asıl tarayıcı cihaz: o çalışırken diğerleri (Mac) siteleri taramaz, yalnızca yedektir
+    primary: 'tablet',
     intervalMinutes: 5,
     fullScanEveryMinutes: 60,
     // Ajanın doğrudan (tarayıcısız) taradığı kaynaklar. sahibinden, arabam ve Borusan

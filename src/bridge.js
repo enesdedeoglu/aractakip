@@ -23,7 +23,7 @@ const BOR = 'https://borusannext.com/araba-al/tesla';
  * @param opts.shared (source) => { lastOk, lastFull, blockedUntil, blockCount, lastBlockAt } – ortak kayıttan
  *        (tüm cihazlar + ajan yeniden başlasa bile geçerli zamanlama)
  */
-export function createBridge({ onScan, needDetail, onChallenge, shared = () => ({}), runner = 'local', version = 0, intervals = {} }) {
+export function createBridge({ onScan, needDetail, onChallenge, shared = () => ({}), runner = 'local', version = 0, primary = null, intervals = {} }) {
   const iv = {
     sahibinden: 15, sahibindenFull: 1440, sahibindenHeavy: 720,
     arabam: 5, arabamFull: 120,
@@ -59,12 +59,19 @@ export function createBridge({ onScan, needDetail, onChallenge, shared = () => (
       if (Date.parse(st.blocks?.[runner]) > Date.now() || Date.parse(st.blockedUntil) > Date.now()) return false;
       const at = Date.parse(task.endsWith('Full') ? st.lastFull : task.endsWith('Heavy') ? st.lastHeavy : st.lastOk);
       if (Number.isFinite(at) && Date.now() - at < span) { last[task] = at; return false; }
+      // Asıl tarayıcı (ör. 7/24 açık tablet) bu siteyi son 3 tur içinde taradıysa diğer cihazlar girmez;
+      // asıl tarayıcı kapanırsa 3 tur sonra yedek cihaz devralır
+      if (primary && runner !== primary) {
+        const pr = st.runs?.[primary];
+        if (pr && Date.now() - Date.parse(pr.lastRun) < 3 * every * MIN) return false;
+      }
       // Sahiplik: siteyi başka bir cihaz düzenli tarıyorsa ona bırak; 3 tur taramazsa devral.
       // O cihaz daha eski kodla çalışıyorsa (ör. güncellenmemiş tablet) güncel cihaz devralır.
+      // Asıl tarayıcı başkasının sahipliğini beklemez.
       const okAt = Date.parse(st.lastOk);
       const owner = st.lastOkRunner;
       const ownerOutdated = version > (st.runs?.[owner]?.v || 0);
-      if (owner && owner !== runner && !ownerOutdated && Number.isFinite(okAt) && Date.now() - okAt < 3 * every * MIN) return false;
+      if (runner !== primary && owner && owner !== runner && !ownerOutdated && Number.isFinite(okAt) && Date.now() - okAt < 3 * every * MIN) return false;
     }
     jitter[task] = 0.85 + Math.random() * 0.3;
     return true;

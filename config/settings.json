@@ -1,6 +1,7 @@
 {
   "repo": "enesdedeoglu/aractakip",
   "agent": {
+    "primary": "tablet",
     "intervalMinutes": 5,
     "fullScanEveryMinutes": 60,
     "sources": ["otokoc"],
