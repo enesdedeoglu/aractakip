@@ -101,6 +101,18 @@
 
   // ---------- Filtreleme ----------
   const isNew = (l) => Date.now() - Date.parse(l.firstSeen) < DAY;
+  // Ağır hasar kaydı: 'var' | 'yok' | 'bilinmiyor' — kayıttaki hesaplanmış değere güvenmeden ilanın (ve
+  // farklı sitelerdeki aynı aracın) hasar bilgisinden hesaplanır
+  function heavyOf(l) {
+    const members = [l, ...(l.dup?.members || []).map((k) => state.db.listings[k]).filter(Boolean)];
+    let known = false;
+    for (const m of members) {
+      const d = m.damage || {};
+      if (d.heavy === true || (m.c?.warnings || []).includes('Ağır hasar kayıtlı')) return 'var';
+      if (d.heavy === false || d.tramer === 0 || d.tramerRecord === false) known = true;
+    }
+    return known ? 'yok' : 'bilinmiyor';
+  }
   const hasDamage = (l) => (l.c?.warnings?.length || 0) > 0 || l.damage?.heavy || (l.damage?.tramer || 0) > 0 || l.damage?.painted || l.damage?.changed;
 
   // Farklı sitelerdeki aynı araç tek kart: filtreye uyan üyelerden ana ilanı (yoksa ilk uyanı) tut
@@ -131,14 +143,14 @@
       if (ignore !== 'trims' && f.trims.length && !f.trims.includes(l.c.trim)) return false;
       if (ignore !== 'sources' && f.sources.length && !f.sources.includes(l.source)) return false;
       if (ignore !== 'sellers' && f.sellers.length && !f.sellers.includes(l.sellerType || 'bilinmiyor')) return false;
-      if (ignore !== 'heavy' && (f.heavy || []).length && !f.heavy.includes(l.c.heavy || 'bilinmiyor')) return false;
+      if (ignore !== 'heavy' && (f.heavy || []).length && !f.heavy.includes(heavyOf(l))) return false;
       if (f.yMin && (l.year || 0) < +f.yMin) return false;
       if (f.yMax && (l.year || 9999) > +f.yMax) return false;
       if (f.pMax && (l.price || 0) > +f.pMax) return false;
       if (f.kMax && l.km != null && l.km > +f.kMax) return false;
       if (f.onlyNew && !isNew(l)) return false;
       if (f.noDamage && hasDamage(l)) return false;
-      if (f.hideHeavy && l.c.heavy === 'var') return false;
+      if (f.hideHeavy && heavyOf(l) === 'var') return false;
       if (f.hideReserved && l.reserved) return false;
       if (f.onlyFav && !state.favs.has(l.key)) return false;
       if (q) {
@@ -230,7 +242,7 @@
 
   function chipGroup(id, key, values, names = {}) {
     const base = baseFiltered(key);
-    const field = { labels: (l) => l.a?.label, gens: (l) => l.c.generation, trims: (l) => l.c.trim, sources: (l) => l.source, sellers: (l) => l.sellerType || 'bilinmiyor', heavy: (l) => l.c.heavy || 'bilinmiyor' }[key];
+    const field = { labels: (l) => l.a?.label, gens: (l) => l.c.generation, trims: (l) => l.c.trim, sources: (l) => l.source, sellers: (l) => l.sellerType || 'bilinmiyor', heavy: heavyOf }[key];
     const counts = {};
     for (const l of base) { const v = field(l); counts[v] = (counts[v] || 0) + 1; }
     const vals = values || Object.keys(counts).sort((a, b) => counts[b] - counts[a]);
@@ -271,7 +283,7 @@
       SELLER_NAMES[l.sellerType] || null,
       l.color ? esc(l.color) : null,
       d.tramer > 0 ? `<span class="warn">Tramer ${tlShort(d.tramer)}</span>` : null,
-      l.c.heavy === 'yok' ? '<span class="tag">Ağır hasar kaydı yok</span>' : null,
+      heavyOf(l) === 'yok' ? '<span class="tag">Ağır hasar kaydı yok</span>' : null,
       l.reserved ? '<span class="warn">Opsiyonlu</span>' : null,
       ...(l.c.warnings || []).map((w) => `<span class="warn">${esc(w)}</span>`),
       ...(l.c.tags || []).slice(0, 5).map((t) => `<span class="tag">${esc(t)}</span>`),
@@ -314,7 +326,7 @@
   function renderGrid() {
     const list = baseFiltered().sort(SORTS[state.f.sort] || SORTS.score);
     $('#count').textContent = `${list.length} ilan`;
-    const hidden = state.f.hideHeavy ? collapse(state.listings.filter((l) => l.status === 'active' && l.c.heavy === 'var')).length : 0;
+    const hidden = state.f.hideHeavy ? collapse(state.listings.filter((l) => l.status === 'active' && heavyOf(l) === 'var')).length : 0;
     $('#heavyCount').textContent = hidden ? `(${hidden} gizli)` : '';
     const grid = $('#grid');
     grid.replaceChildren(...list.slice(0, state.shown).map(card));
