@@ -144,6 +144,17 @@
     </section>
   </main>
 
+  <dialog id="detail" class="detail" aria-labelledby="dTitle">
+    <div class="d-head">
+      <div>
+        <h2 id="dTitle"></h2>
+        <div class="sub" id="dSub"></div>
+      </div>
+      <button class="btn ghost" id="dClose" type="button" aria-label="Kapat">✕</button>
+    </div>
+    <div id="dBody"></div>
+  </dialog>
+
   <div class="toasts" id="toasts" aria-live="polite"></div>
   <script src="app.js?v=__BUILD__"></script>
 </body>

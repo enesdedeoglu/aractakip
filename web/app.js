@@ -320,6 +320,7 @@
         ${why ? `<ul class="why">${why}</ul>` : ''}
         ${sparkline(l.vehicleHistory || l.priceHistory)}
         ${relistLine(l)}
+        <button class="hist-btn" type="button" data-hist="${esc(l.key)}">📈 Fiyat geçmişi${(l.vehicleHistory || l.priceHistory || []).length > 1 ? ` (${(l.vehicleHistory || l.priceHistory).length - 1} değişim)` : ''}</button>
         <div class="foot"><span>İlk görülme: ${ago(l.firstSeen)}</span><span>${a.daysOnMarket != null ? `${a.daysOnMarket} gündür ilanda` : ''}</span></div>
       </div>`;
     return c;
@@ -420,10 +421,118 @@
         <td>${SOURCE_NAMES[l.source]}<br><small>${SELLER_NAMES[l.sellerType] || ''}</small></td>
         <td class="num">${tl(first)}</td>
         <td class="num">${tl(l.price)}${d ? `<br><small class="${d < 0 ? 'chg-down' : 'chg-up'}">${d < 0 ? '▼' : '▲'} %${Math.abs((d / first) * 100).toFixed(1)}</small>` : ''}</td>
-        <td class="num">${daysBetween(listedFrom(l), l.removedAt)} gün</td>
+        <td class="num">${daysBetween(listedFrom(l), l.removedAt)} gün<br><button class="hist-btn" type="button" data-hist="${esc(l.key)}">📈</button></td>
         <td>${next ? `<a href="${esc(next.url)}" target="_blank" rel="noopener">↻ yeniden ilan</a><br><small>${SOURCE_NAMES[next.source]} ${tl(next.price)}${next.status === 'removed' ? ' (o da kalktı)' : ''}</small>` : '<small>satıldı / kaldırıldı</small>'}</td>
       </tr>`;
     }).join('')}</tbody>` : '';
+  }
+
+  // ---------- İlan ayrıntısı: fiyat geçmişi ----------
+  const SERIES_COLORS = ['var(--accent)', 'var(--info)', 'var(--good)', 'var(--warn)'];
+  const fmtDate = (iso) => {
+    const d = new Date(iso);
+    return d.toLocaleDateString('tr-TR', d.getFullYear() === new Date().getFullYear() ? { day: '2-digit', month: 'short' } : { day: '2-digit', month: 'short', year: 'numeric' });
+  };
+
+  // Aracın tüm ilanları: kendisi, yeniden ilan zinciri (öncekiler) ve farklı sitelerdeki aynı araç
+  function vehicleListings(l) {
+    const out = [];
+    const add = (x, role) => { if (x && !out.some((o) => o.l.key === x.key)) out.push({ l: x, role }); };
+    add(l, 'bu ilan');
+    let prev = l.relistOf && state.db.listings[l.relistOf];
+    for (let i = 0; prev && i < 5; i++) { add(prev, 'önceki ilan'); prev = prev.relistOf && state.db.listings[prev.relistOf]; }
+    for (const k of l.dup?.members || []) add(state.db.listings[k], 'aynı araç');
+    return out;
+  }
+
+  function priceChart(series) {
+    const pts = series.flatMap((s) => s.points);
+    if (!pts.length) return '';
+    const W = 700, H = 240, P = { l: 70, r: 16, t: 14, b: 30 };
+    const now = Date.now();
+    const t0 = Math.min(...pts.map((p) => p.t)), t1 = Math.max(now, ...pts.map((p) => p.t));
+    const ps = pts.map((p) => p.p);
+    let lo = Math.min(...ps), hi = Math.max(...ps);
+    const pad = Math.max((hi - lo) * 0.15, hi * 0.02);
+    lo -= pad; hi += pad;
+    const X = (t) => P.l + ((t - t0) / Math.max(1, t1 - t0)) * (W - P.l - P.r);
+    const Y = (v) => H - P.b - ((v - lo) / (hi - lo)) * (H - P.t - P.b);
+    const ticksY = Array.from({ length: 4 }, (_, i) => lo + ((hi - lo) * i) / 3);
+    const ticksX = Array.from({ length: 4 }, (_, i) => t0 + ((t1 - t0) * i) / 3);
+    const lines = series.map((s, i) => {
+      if (!s.points.length) return '';
+      // basamaklı çizgi: fiyat bir sonraki değişikliğe kadar geçerli; son nokta bugüne (veya kalkışa) uzar
+      const end = s.end ?? now;
+      let d = `M${X(s.points[0].t)},${Y(s.points[0].p)}`;
+      s.points.forEach((p, j) => {
+        if (j) d += ` H${X(p.t)} V${Y(p.p)}`;
+      });
+      d += ` H${X(end)}`;
+      const dots = s.points.map((p) => `<circle cx="${X(p.t)}" cy="${Y(p.p)}" r="4" fill="${SERIES_COLORS[i % 4]}"><title>${fmtDate(new Date(p.t).toISOString())}: ${tl(p.p)} (${esc(s.name)})</title></circle>`).join('');
+      return `<path class="line" d="${d}" stroke="${SERIES_COLORS[i % 4]}" ${s.dashed ? 'stroke-dasharray="6 4"' : ''}/>${dots}`;
+    }).join('');
+    return `<div class="d-chart"><svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Fiyat geçmişi grafiği">
+      ${ticksY.map((v) => `<line class="grid-line" x1="${P.l}" x2="${W - P.r}" y1="${Y(v)}" y2="${Y(v)}"/><text x="${P.l - 8}" y="${Y(v) + 4}" text-anchor="end">${tlShort(v)}</text>`).join('')}
+      ${ticksX.map((t) => `<text x="${X(t)}" y="${H - 8}" text-anchor="middle">${t1 - t0 < 3 * DAY
+        ? new Date(t).toLocaleString('tr-TR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })
+        : new Date(t).toLocaleDateString('tr-TR', { day: '2-digit', month: 'short' })}</text>`).join('')}
+      ${lines}
+    </svg></div>
+    <div class="d-legend">${series.map((s, i) => `<span><i style="background:${SERIES_COLORS[i % 4]}"></i>${esc(s.name)}</span>`).join('')}</div>`;
+  }
+
+  function openDetail(key) {
+    const l = state.db?.listings[key];
+    if (!l) return;
+    const vl = vehicleListings(l);
+    const series = vl.map(({ l: x, role }) => ({
+      name: `${SOURCE_NAMES[x.source]} · ${role}${x.status === 'removed' ? ' (kalktı)' : ''}`,
+      points: (x.priceHistory || []).map((h) => ({ t: Date.parse(h.t), p: h.p })),
+      end: x.status === 'removed' ? Date.parse(x.removedAt) : null,
+      dashed: role !== 'bu ilan',
+    }));
+    // Araç bazında ilk fiyat → bugünkü fiyat
+    const own = (l.vehicleHistory || l.priceHistory || []);
+    const first = own[0]?.p ?? l.price;
+    const chg = l.price - first;
+    const since = l.relistOf ? (vl.at(-1)?.l.publishedAt || vl.at(-1)?.l.firstSeen) : (l.publishedAt || l.firstSeen);
+
+    // Tüm değişiklikler tek tabloda (en yeni üstte)
+    const rows = [];
+    for (const { l: x, role } of vl) {
+      const h = x.priceHistory || [];
+      h.forEach((e, i) => rows.push({ t: e.t, p: e.p, prev: i ? h[i - 1].p : null, x, role, first: i === 0 }));
+      if (x.status === 'removed') rows.push({ t: x.removedAt, removed: true, x, role });
+    }
+    rows.sort((a, b) => Date.parse(b.t) - Date.parse(a.t));
+
+    $('#dTitle').textContent = `${l.c.model} ${l.c.generation !== '-' ? l.c.generation : ''} · ${l.c.trim} · ${l.year || ''}`;
+    $('#dSub').innerHTML = `${esc(l.title)} · ${kmFmt(l.km)} · ${esc(l.city || '')} · <a href="${esc(l.url)}" target="_blank" rel="noopener">ilanı aç ↗</a>`;
+    $('#dBody').innerHTML = `
+      <div class="d-stats">
+        <div><b>${tl(l.price)}</b><span>güncel fiyat</span></div>
+        <div><b>${tl(first)}</b><span>ilk görülen fiyat</span></div>
+        <div><b class="${chg < 0 ? 'chg-down' : chg > 0 ? 'chg-up' : ''}">${chg ? `${chg < 0 ? '▼' : '▲'} ${tlShort(Math.abs(chg))} (%${Math.abs((chg / first) * 100).toFixed(1)})` : 'değişmedi'}</b><span>toplam değişim</span></div>
+        <div><b>${daysBetween(since, new Date().toISOString())} gün</b><span>${l.relistOf ? 'ilk ilandan beri' : 'ilanda'}</span></div>
+      </div>
+      ${own.length <= 1 && vl.length === 1 ? `<p class="d-note">Fiyat, ilan ilk görüldüğünden (${fmtDate(l.firstSeen)}) beri değişmedi. Değişiklik olursa burada tarihiyle görünecek ve fiyat düşüşünde mail alacaksın.</p>` : ''}
+      ${priceChart(series)}
+      <table class="hist">
+        <thead><tr><th>Tarih</th><th>İlan</th><th class="num">Fiyat</th><th class="num">Değişim</th></tr></thead>
+        <tbody>${rows.map((r) => r.removed
+          ? `<tr><td>${fmtDate(r.t)}</td><td>${SOURCE_NAMES[r.x.source]} <small>${r.role}</small></td><td class="num" colspan="2"><small>ilan kalktı</small></td></tr>`
+          : `<tr><td>${fmtDate(r.t)}</td><td><a href="${esc(r.x.url)}" target="_blank" rel="noopener">${SOURCE_NAMES[r.x.source]}</a> <small>${r.role}${r.first ? ' · ilk görüldü' : ''}</small></td><td class="num">${tl(r.p)}</td>
+             <td class="num">${r.prev ? `<span class="${r.p < r.prev ? 'chg-down' : 'chg-up'}">${r.p < r.prev ? '▼' : '▲'} ${tlShort(Math.abs(r.p - r.prev))} (%${Math.abs(((r.p - r.prev) / r.prev) * 100).toFixed(1)})</span>` : '—'}</td></tr>`).join('')}</tbody>
+      </table>`;
+    const dlg = $('#detail');
+    if (!dlg.open) dlg.showModal();
+    history.replaceState(null, '', `#ilan=${encodeURIComponent(key)}`);
+  }
+
+  function closeDetail() {
+    const dlg = $('#detail');
+    if (dlg.open) dlg.close();
+    if (location.hash.startsWith('#ilan=')) history.replaceState(null, '', location.pathname + location.search);
   }
 
   // ---------- Akış ----------
@@ -466,6 +575,10 @@
       const i = arr.indexOf(t.dataset.val);
       if (i >= 0) arr.splice(i, 1); else arr.push(t.dataset.val);
       update();
+    } else if (t.dataset.hist) {
+      openDetail(t.dataset.hist);
+    } else if (t.id === 'dClose') {
+      closeDetail();
     } else if (t.dataset.fav) {
       const k = t.dataset.fav;
       if (state.favs.has(k)) state.favs.delete(k); else state.favs.add(k);
@@ -506,9 +619,16 @@
 
   document.addEventListener('visibilitychange', () => { if (!document.hidden) { document.title = 'Tesla İlan Takip'; load(); } });
 
+  $('#detail').addEventListener('click', (e) => { if (e.target.id === 'detail') closeDetail(); }); // arka plana tıklayınca kapan
+  $('#detail').addEventListener('close', () => { if (location.hash.startsWith('#ilan=')) history.replaceState(null, '', location.pathname + location.search); });
+
   const tab = store.get('tab', 'listings');
   document.querySelector(`.tab[data-tab="${tab}"]`)?.click();
   syncInputs();
-  load(true);
+  load(true).then(() => {
+    // Paylaşılan bağlantı: #ilan=<anahtar> ilanın fiyat geçmişini açar
+    const m = location.hash.match(/^#ilan=(.+)$/);
+    if (m) openDetail(decodeURIComponent(m[1]));
+  });
   setInterval(load, POLL_MS);
 })();
