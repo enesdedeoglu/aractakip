@@ -16,6 +16,7 @@
     "minYear": null,
     "notifyPriceDrops": true,
     "notifyRemoved": false,
-    "onlyLabels": []
+    "onlyLabels": [],
+    "excludeHeavyDamage": true
   }
 }

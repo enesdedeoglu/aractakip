@@ -29,6 +29,7 @@ const DEFAULTS = {
     notifyPriceDrops: true,
     notifyRemoved: false,
     onlyLabels: [],
+    excludeHeavyDamage: true, // ağır hasar kayıtlı ilanlar için mail gönderme
   },
 };
 

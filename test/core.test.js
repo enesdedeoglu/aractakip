@@ -94,3 +94,14 @@ test('sahibinden: sahte (tuzak) ilanlar ayıklanır', () => {
   assert.ok(!isFakeRow(real));
   assert.deepEqual(normalize([{ url: 'https://www.sahibinden.com/tesla', heads, rows: [fake, real] }]).map((l) => l.sourceId), ['1343683453']);
 });
+
+import { heavyStatus } from '../src/merge.js';
+
+test('ağır hasar kaydı durumu', () => {
+  assert.equal(heavyStatus({ damage: { heavy: true } }), 'var');
+  assert.equal(heavyStatus({ damage: {}, c: { warnings: ['Ağır hasar kayıtlı'] } }), 'var');
+  assert.equal(heavyStatus({ damage: { heavy: false } }), 'yok');
+  assert.equal(heavyStatus({ damage: { tramer: 0 } }), 'yok');
+  assert.equal(heavyStatus({ damage: { tramerRecord: false } }), 'yok');
+  assert.equal(heavyStatus({ damage: { tramer: null } }), 'bilinmiyor');
+});

@@ -19,6 +19,7 @@ export function passesAlertFilter(l, alerts) {
   if (alerts.maxKm && l.km > alerts.maxKm) return false;
   if (alerts.minYear && l.year < alerts.minYear) return false;
   if (alerts.onlyLabels?.length && !alerts.onlyLabels.includes(l.a?.label)) return false;
+  if (alerts.excludeHeavyDamage && l.c?.heavy === 'var') return false;
   return true;
 }
 

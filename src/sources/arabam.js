@@ -62,7 +62,10 @@ export async function fetchDetail(listing) {
 export function parseDetail(h, listing = {}) {
   const props = {};
   for (const m of h.matchAll(/\{"Id":\d+,"Key":"([^"]+)","Value":"([^"]*)"/g)) props[m[1]] = m[2];
+  // DamageInfo.Status: 2 = "Tramer tutarı yok"; 4 = belirtilmemiş (tutar yine 0 gelir!); tutar > 0 = tramer kaydı var
   const dmg = h.match(/"DamageInfo":\{"Status":(\d+),"DamagePrice":([\d.]+)/);
+  const dmgStatus = dmg ? Number(dmg[1]) : null;
+  const dmgPrice = dmg ? Math.round(Number(dmg[2])) : null;
   const boya = props['Boya-değişen'] || null;
   return {
     km: parseNumber(props['Kilometre']) ?? listing.km ?? null,
@@ -70,7 +73,8 @@ export function parseDetail(h, listing = {}) {
     color: props['Renk'] || listing.color || null,
     sellerType: props['Kimden'] === 'Sahibinden' ? 'sahibinden' : listing.sellerType,
     damage: {
-      tramer: dmg ? Math.round(Number(dmg[2])) : null,
+      tramer: dmgPrice > 0 ? dmgPrice : dmgStatus === 2 ? 0 : null,
+      tramerStatus: dmgStatus,
       heavy: props['Ağır Hasarlı'] ? props['Ağır Hasarlı'] === 'Evet' : null,
       summary: boya,
       original: boya ? /tamamı orjinal/i.test(boya) : null,

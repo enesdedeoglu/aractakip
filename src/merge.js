@@ -138,9 +138,22 @@ export function recompute(db) {
     // Gruptaki diğer ilanlardan gelen hasar/ekspertiz bilgisi de değerlendirmeye katılsın
     const view = l.dup ? { ...l, damage: groupDamage(l, db.listings) } : l;
     l.a = analyzeListing(view, market, unique);
+    l.c.heavy = heavyStatus(view);
   }
   db.market = marketSummary(unique);
   db.model = market ? { n: market.n, at: new Date().toISOString() } : null;
+}
+
+/**
+ * Ağır hasar kaydı durumu: 'var' | 'yok' | 'bilinmiyor'
+ *  - arabam detayı "Ağır Hasarlı: Evet/Hayır", ilan metninde "ağır hasar/pert" → var
+ *  - tramer kaydı yok (0 TL / Borusan) veya detayda "Hayır" → yok
+ */
+export function heavyStatus(l) {
+  const d = l.damage || {};
+  if (d.heavy === true || (l.c?.warnings || []).includes('Ağır hasar kayıtlı')) return 'var';
+  if (d.heavy === false || d.tramer === 0 || d.tramerRecord === false) return 'yok';
+  return 'bilinmiyor';
 }
 
 export function summarizeChanges(c) {

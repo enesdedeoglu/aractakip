@@ -47,10 +47,11 @@
     seenKeys: null,
     shown: PAGE,
     f: Object.assign({
-      model: null, q: '', sort: 'score', labels: [], gens: [], trims: [], sources: [], sellers: [],
+      model: null, q: '', sort: 'score', labels: [], gens: [], trims: [], sources: [], sellers: [], heavy: [],
       yMin: '', yMax: '', pMax: '', kMax: '', onlyNew: false, noDamage: false, hideReserved: false, onlyFav: false, showRemoved: false, dedupe: true,
     }, store.get('filters', {})),
   };
+  state.f.heavy ||= [];
 
   // ---------- Veri ----------
   async function load(first = false) {
@@ -129,6 +130,7 @@
       if (ignore !== 'trims' && f.trims.length && !f.trims.includes(l.c.trim)) return false;
       if (ignore !== 'sources' && f.sources.length && !f.sources.includes(l.source)) return false;
       if (ignore !== 'sellers' && f.sellers.length && !f.sellers.includes(l.sellerType || 'bilinmiyor')) return false;
+      if (ignore !== 'heavy' && (f.heavy || []).length && !f.heavy.includes(l.c.heavy || 'bilinmiyor')) return false;
       if (f.yMin && (l.year || 0) < +f.yMin) return false;
       if (f.yMax && (l.year || 9999) > +f.yMax) return false;
       if (f.pMax && (l.price || 0) > +f.pMax) return false;
@@ -226,7 +228,7 @@
 
   function chipGroup(id, key, values, names = {}) {
     const base = baseFiltered(key);
-    const field = { labels: (l) => l.a?.label, gens: (l) => l.c.generation, trims: (l) => l.c.trim, sources: (l) => l.source, sellers: (l) => l.sellerType || 'bilinmiyor' }[key];
+    const field = { labels: (l) => l.a?.label, gens: (l) => l.c.generation, trims: (l) => l.c.trim, sources: (l) => l.source, sellers: (l) => l.sellerType || 'bilinmiyor', heavy: (l) => l.c.heavy || 'bilinmiyor' }[key];
     const counts = {};
     for (const l of base) { const v = field(l); counts[v] = (counts[v] || 0) + 1; }
     const vals = values || Object.keys(counts).sort((a, b) => counts[b] - counts[a]);
@@ -240,6 +242,7 @@
     chipGroup('#fTrim', 'trims');
     chipGroup('#fSource', 'sources', null, SOURCE_NAMES);
     chipGroup('#fSeller', 'sellers', null, { ...SELLER_NAMES, bilinmiyor: 'Bilinmiyor' });
+    chipGroup('#fHeavy', 'heavy', ['yok', 'var', 'bilinmiyor'], { yok: '✓ Kaydı yok', var: '⚠ Kayıtlı', bilinmiyor: 'Bilinmiyor' });
   }
 
   function sparkline(hist) {
@@ -266,6 +269,7 @@
       SELLER_NAMES[l.sellerType] || null,
       l.color ? esc(l.color) : null,
       d.tramer > 0 ? `<span class="warn">Tramer ${tlShort(d.tramer)}</span>` : null,
+      l.c.heavy === 'yok' ? '<span class="tag">Ağır hasar kaydı yok</span>' : null,
       l.reserved ? '<span class="warn">Opsiyonlu</span>' : null,
       ...(l.c.warnings || []).map((w) => `<span class="warn">${esc(w)}</span>`),
       ...(l.c.tags || []).slice(0, 5).map((t) => `<span class="tag">${esc(t)}</span>`),
@@ -405,7 +409,7 @@
   for (const k of ['yMin', 'yMax', 'pMax', 'kMax']) $('#' + k).addEventListener('change', (e) => { state.f[k] = e.target.value; update(); });
   for (const k of ['onlyNew', 'noDamage', 'hideReserved', 'onlyFav', 'showRemoved', 'dedupe']) $('#' + k).addEventListener('change', (e) => { state.f[k] = e.target.checked; update(); });
   $('#reset').addEventListener('click', () => {
-    Object.assign(state.f, { model: null, q: '', labels: [], gens: [], trims: [], sources: [], sellers: [], yMin: '', yMax: '', pMax: '', kMax: '', onlyNew: false, noDamage: false, hideReserved: false, onlyFav: false, showRemoved: false, dedupe: true });
+    Object.assign(state.f, { model: null, q: '', labels: [], gens: [], trims: [], sources: [], sellers: [], heavy: [], yMin: '', yMax: '', pMax: '', kMax: '', onlyNew: false, noDamage: false, hideReserved: false, onlyFav: false, showRemoved: false, dedupe: true });
     syncInputs(); update();
   });
   $('#more').addEventListener('click', () => { state.shown += PAGE; renderGrid(); });
