@@ -32,6 +32,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           ARACTAKIP_REPO: ${{ github.repository }}
+          ARACTAKIP_DATA_KEY: ${{ secrets.ARACTAKIP_DATA_KEY }}
       - name: Siteyi yenile
         run: gh workflow run scrape.yml -f mode=deploy --repo "${{ github.repository }}"
         env:

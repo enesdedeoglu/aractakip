@@ -44,6 +44,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           ARACTAKIP_REPO: ${{ github.repository }}
+          ARACTAKIP_DATA_KEY: ${{ secrets.ARACTAKIP_DATA_KEY }}
           SITE_URL: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/
           MAIL_TO: ${{ secrets.MAIL_TO }}
           SMTP_USER: ${{ secrets.SMTP_USER }}
@@ -71,7 +72,9 @@ jobs:
           cp -r web/* _site/
           # Tarayıcı önbelleği eski app.js/styles.css'i kullanmasın
           sed -i "s/__BUILD__/${GITHUB_SHA::8}/g" _site/index.html
-          if [ -f data/db.json ]; then cp data/db.json _site/data/db.json; fi
+          # Veri şifreliyse yalnızca şifreli dosya yayınlanır (şifresiz kopya geçiş sırasında silinir)
+          if [ -f data/db.enc.json ]; then cp data/db.enc.json _site/data/db.enc.json
+          elif [ -f data/db.json ]; then cp data/db.json _site/data/db.json; fi
           # Android Firefox'a tarayıcıdan kurulabilsin diye eklenti paketi de yayınlanır
           sh scripts/build-firefox.sh _site/aractakip-firefox.xpi
           # Firefox otomatik güncelleme bildirimi

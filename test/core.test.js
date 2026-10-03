@@ -143,3 +143,21 @@ test('mail duraklatma', () => {
   assert.equal(mailPaused({ prefs: { mailPausedUntil: new Date(Date.now() + 3600e3).toISOString() } }), true);
   assert.equal(mailPaused({ prefs: { mailPausedUntil: new Date(Date.now() - 1000).toISOString() } }), false, 'süresi dolunca kendiliğinden açılır');
 });
+
+import { encryptDb, decryptDb } from '../src/crypto.js';
+
+test('şifreli veri: Node şifreler, tarayıcı (WebCrypto) çözer; yanlış şifre reddedilir', async () => {
+  const db = { version: 1, listings: { 'a:1': { title: 'Tesla Model Y – çğüşöı' } }, prefs: {} };
+  const file = encryptDb(db, 'doğru-şifre');
+  assert.deepEqual(decryptDb(file, 'doğru-şifre'), db);
+  assert.throws(() => decryptDb(file, 'yanlış'), /şifre/);
+  // Aynı tuzla yeniden şifreleme (tarayıcıda hatırlanan anahtar geçerli kalmalı)
+  assert.equal(encryptDb(db, 'doğru-şifre', file.salt).salt, file.salt);
+  // Tarayıcıdaki adımların aynısı
+  const b64 = (s) => Uint8Array.from(Buffer.from(s, 'base64'));
+  const base = await crypto.subtle.importKey('raw', new TextEncoder().encode('doğru-şifre'), 'PBKDF2', false, ['deriveKey']);
+  const key = await crypto.subtle.deriveKey({ name: 'PBKDF2', hash: 'SHA-256', salt: b64(file.salt), iterations: file.iter }, base, { name: 'AES-GCM', length: 256 }, true, ['decrypt']);
+  const plain = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: b64(file.iv) }, key, b64(file.data));
+  const text = await new Response(new Blob([plain]).stream().pipeThrough(new DecompressionStream('gzip'))).text();
+  assert.deepEqual(JSON.parse(text), db);
+});

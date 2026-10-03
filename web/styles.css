@@ -321,3 +321,11 @@ dialog.detail.small { width: min(460px, calc(100vw - 24px)); }
 .mail-actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0; }
 .mail-actions .btn.primary { background: var(--text); color: var(--bg); border-color: var(--text); }
 ol.steps { margin: 8px 0 0; padding-left: 20px; display: flex; flex-direction: column; gap: 6px; font-size: 14px; }
+
+.login { position: fixed; inset: 0; z-index: 100; background: var(--bg); display: grid; place-items: center; padding: 16px; }
+.login-box { width: min(360px, 100%); background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 24px; box-shadow: var(--shadow); display: flex; flex-direction: column; gap: 12px; }
+.login-box .logo { width: 44px; height: 44px; }
+.login-box h1 { font-size: 20px; }
+.login-box input[type="password"] { width: 100%; border: 1px solid var(--border); background: var(--surface-2); border-radius: 10px; padding: 10px 12px; font-size: 16px; color: var(--text); }
+.login-box .btn.primary { background: var(--accent); color: #fff; border-color: var(--accent); padding: 10px; font-weight: 700; }
+.login-err { color: var(--bad); font-size: 13px; min-height: 1em; margin: 0; }

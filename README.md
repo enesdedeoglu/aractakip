@@ -90,6 +90,14 @@ bir site başka bir ajan tarafından az önce tarandıysa diğeri o turu atlar.
 
 Kayıtlar: Termux'ta `tail -f ~/.aractakip/agent.log`.
 
+### Site şifresi (yalnızca sen gör)
+Veriler `ARACTAKIP_DATA_KEY` şifresiyle şifrelenip `data/db.enc.json` olarak saklanır (AES-256-GCM, PBKDF2).
+Site ilk açılışta bu şifreyi sorar ve o cihazda "Çıkış" diyene kadar hatırlar. Şifre üç yerde olmalı:
+- Mac ve tablet: `~/.aractakip/env` içinde `ARACTAKIP_DATA_KEY=...`
+- GitHub (mail işlemi için): `gh secret set ARACTAKIP_DATA_KEY --repo enesdedeoglu/aractakip`
+
+Şifresi olmayan ajan şifreli veriyi okumaz ve yazmaz. Şifreyi unutursan veriler çözülemez (ilanlar yeniden taranır, geçmiş kaybolur).
+
 ### 4) Ayarlar — `config/settings.json`
 - `alerts`: hangi ilanlar için bildirim gelsin (`models: ["Model Y"]`, `maxPrice`, `maxKm`, `minYear`, `onlyLabels: ["Fırsat","İyi fiyat"]`, `notifyPriceDrops`, `notifyRemoved`).
 - `agent.extension`: eklenti sekmesinin site başına açma aralıkları (dakika).

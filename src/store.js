@@ -6,9 +6,11 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
 import { loadSettings } from './settings.js';
+import { encryptDb, decryptDb } from './crypto.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 export const DB_PATH = 'data/db.json';
+export const ENC_PATH = 'data/db.enc.json';
 
 export function emptyDb() {
   return { version: 1, updatedAt: null, sources: {}, listings: {}, events: [], market: null, model: null };
@@ -57,9 +59,10 @@ class GithubStore {
     });
     return res;
   }
-  async load() {
-    const res = await this.api(`/contents/${DB_PATH}?ref=${this.branch}`);
-    if (res.status === 404) return { db: emptyDb(), version: null };
+  // Bir dosyayı (meta + içerik) oku; yoksa null
+  async readFile(path) {
+    const res = await this.api(`/contents/${path}?ref=${this.branch}`);
+    if (res.status === 404) return null;
     if (!res.ok) throw new Error(`GitHub okuma hatası ${res.status}: ${await res.text()}`);
     const meta = await res.json();
     let b64 = meta.content;
@@ -67,19 +70,56 @@ class GithubStore {
       const blob = await (await this.api(`/git/blobs/${meta.sha}`)).json();
       b64 = blob.content;
     }
-    return { db: JSON.parse(Buffer.from(b64, 'base64').toString('utf8')), version: meta.sha };
+    return { sha: meta.sha, text: Buffer.from(b64, 'base64').toString('utf8') };
   }
-  async save(db, version, message) {
+
+  async writeFile(path, text, sha, message) {
     const body = {
       message: message || 'veri güncellemesi',
-      content: Buffer.from(JSON.stringify(db)).toString('base64'),
+      content: Buffer.from(text).toString('base64'),
       branch: this.branch,
       committer: { name: 'aractakip-bot', email: 'aractakip-bot@users.noreply.github.com' },
     };
-    if (version) body.sha = version;
-    const res = await this.api(`/contents/${DB_PATH}`, { method: 'PUT', body: JSON.stringify(body) });
+    if (sha) body.sha = sha;
+    const res = await this.api(`/contents/${path}`, { method: 'PUT', body: JSON.stringify(body) });
     if (res.status === 409 || res.status === 422) throw new ConflictError(`GitHub çakışma ${res.status}`);
     if (!res.ok) throw new Error(`GitHub yazma hatası ${res.status}: ${await res.text()}`);
+  }
+
+  // Şifre (ARACTAKIP_DATA_KEY) varsa veri şifreli dosyada (data/db.enc.json) tutulur; şifresiz eski dosya
+  // ilk kayıtta şifreliye taşınıp silinir. Şifreli dosya varken şifresi olmayan ajan okumaz/yazmaz.
+  async load() {
+    const password = process.env.ARACTAKIP_DATA_KEY;
+    const enc = await this.readFile(ENC_PATH);
+    if (enc) {
+      if (!password) throw new Error('Veri şifreli: bu cihazda ARACTAKIP_DATA_KEY (site şifresi) ayarlı değil');
+      const file = JSON.parse(enc.text);
+      this.salt = file.salt;
+      this.plainSha = (await this.readFile(DB_PATH))?.sha || null; // geçişten kalan şifresiz dosya
+      return { db: decryptDb(file, password), version: enc.sha };
+    }
+    const plain = await this.readFile(DB_PATH);
+    this.plainSha = plain?.sha || null;
+    this.salt = null;
+    if (!plain) return { db: emptyDb(), version: null };
+    // Şifre ayarlıysa sürüm "henüz şifreli dosya yok" demektir (ilk kayıtta oluşturulur)
+    return { db: JSON.parse(plain.text), version: password ? null : plain.sha };
+  }
+
+  async save(db, version, message) {
+    const password = process.env.ARACTAKIP_DATA_KEY;
+    if (!password) return this.writeFile(DB_PATH, JSON.stringify(db), version, message);
+    const file = encryptDb(db, password, this.salt);
+    this.salt = file.salt;
+    await this.writeFile(ENC_PATH, JSON.stringify(file), version, message);
+    if (this.plainSha) {
+      // Şifresiz eski kopyayı kaldır
+      const res = await this.api(`/contents/${DB_PATH}`, {
+        method: 'DELETE',
+        body: JSON.stringify({ message: 'veri artık şifreli: şifresiz kopya silindi', sha: this.plainSha, branch: this.branch, committer: { name: 'aractakip-bot', email: 'aractakip-bot@users.noreply.github.com' } }),
+      });
+      if (res.ok || res.status === 404) this.plainSha = null;
+    }
   }
 }
 

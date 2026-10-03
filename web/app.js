@@ -1,6 +1,5 @@
 /* Tesla İlan Takip – istemci uygulaması (bağımlılıksız) */
 (() => {
-  const DATA_URL = 'data/db.json';
   const POLL_MS = 60_000;
   const PAGE = 36;
   const DAY = 86400000;
@@ -54,12 +53,89 @@
   state.f.heavy ||= [];
   if (state.f.hideHeavy === undefined) state.f.hideHeavy = true;
 
+  // ---------- Şifreli veri ve giriş ----------
+  // Herkese açık sitede veri şifreli (data/db.enc.json). Şifreden türetilen anahtar bu cihazda saklanır;
+  // şifrenin kendisi saklanmaz. Bilgisayardaki yerel arayüz (127.0.0.1) şifresiz veriyi sunar.
+  const IS_LOCAL = /^(127\.0\.0\.1|localhost)$/.test(location.hostname);
+  const b64 = (s) => Uint8Array.from(atob(s), (c) => c.charCodeAt(0));
+  const toB64 = (buf) => btoa(String.fromCharCode(...new Uint8Array(buf)));
+  let sessionKey = null; // { salt, key: CryptoKey }
+
+  async function deriveKey(password, file) {
+    const base = await crypto.subtle.importKey('raw', new TextEncoder().encode(password), 'PBKDF2', false, ['deriveKey']);
+    return crypto.subtle.deriveKey({ name: 'PBKDF2', hash: 'SHA-256', salt: b64(file.salt), iterations: file.iter }, base, { name: 'AES-GCM', length: 256 }, true, ['decrypt']);
+  }
+
+  async function decryptFile(file, key) {
+    const plain = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: b64(file.iv) }, key, b64(file.data));
+    const stream = new Blob([plain]).stream().pipeThrough(new DecompressionStream('gzip'));
+    return JSON.parse(await new Response(stream).text());
+  }
+
+  async function savedKey(file) {
+    try {
+      const s = JSON.parse(localStorage.getItem('tt:key') || sessionStorage.getItem('tt:key') || 'null');
+      if (!s || s.salt !== file.salt) return null;
+      return crypto.subtle.importKey('raw', b64(s.k), { name: 'AES-GCM' }, true, ['decrypt']);
+    } catch { return null; }
+  }
+
+  function askPassword(file) {
+    return new Promise((resolve) => {
+      $('#login').hidden = false;
+      $('#loginPass').focus();
+      $('#loginForm').onsubmit = async (e) => {
+        e.preventDefault();
+        $('#loginErr').textContent = '';
+        $('#loginBtn').disabled = true;
+        $('#loginBtn').textContent = 'Açılıyor…';
+        try {
+          const key = await deriveKey($('#loginPass').value, file);
+          const db = await decryptFile(file, key); // yanlış şifrede burada hata verir
+          const raw = toB64(await crypto.subtle.exportKey('raw', key));
+          const rec = JSON.stringify({ salt: file.salt, k: raw });
+          try { ($('#loginRemember').checked ? localStorage : sessionStorage).setItem('tt:key', rec); } catch { /* depolama kapalı */ }
+          sessionKey = { salt: file.salt, key };
+          $('#loginPass').value = '';
+          $('#login').hidden = true;
+          resolve(db);
+        } catch {
+          $('#loginErr').textContent = 'Şifre yanlış.';
+        } finally {
+          $('#loginBtn').disabled = false;
+          $('#loginBtn').textContent = 'Giriş';
+        }
+      };
+    });
+  }
+
+  async function fetchDb() {
+    const t = `?t=${Date.now()}`;
+    if (IS_LOCAL) return (await fetch(`data/db.json${t}`, { cache: 'no-store' })).json();
+    const res = await fetch(`data/db.enc.json${t}`, { cache: 'no-store' });
+    if (res.status === 404) return (await fetch(`data/db.json${t}`, { cache: 'no-store' })).json(); // şifrelemeye geçiş öncesi
+    if (!res.ok) throw new Error(res.status);
+    const file = await res.json();
+    $('#logoutBtn').hidden = false;
+    let key = sessionKey?.salt === file.salt ? sessionKey.key : await savedKey(file);
+    if (key) {
+      try { const db = await decryptFile(file, key); sessionKey = { salt: file.salt, key }; return db; }
+      catch { try { localStorage.removeItem('tt:key'); sessionStorage.removeItem('tt:key'); } catch {} }
+    }
+    return askPassword(file);
+  }
+
+  function logout() {
+    try { localStorage.removeItem('tt:key'); sessionStorage.removeItem('tt:key'); } catch {}
+    sessionKey = null;
+    location.reload();
+  }
+
   // ---------- Veri ----------
   async function load(first = false) {
+    if (!$('#login').hidden) return; // giriş bekleniyor
     try {
-      const res = await fetch(`${DATA_URL}?t=${Date.now()}`, { cache: 'no-store' });
-      if (!res.ok) throw new Error(res.status);
-      const db = await res.json();
+      const db = await fetchDb();
       const fresh = [];
       const keys = new Set(Object.keys(db.listings || {}));
       if (state.seenKeys) for (const k of keys) if (!state.seenKeys.has(k) && db.listings[k].status === 'active') fresh.push(db.listings[k]);
@@ -537,7 +613,7 @@
   }
 
   // ---------- Mail bildirimleri: durdur / devam ----------
-  const LOCAL = /^(127\.0\.0\.1|localhost)$/.test(location.hostname);
+  const LOCAL = IS_LOCAL;
   const WORKFLOW_URL = 'https://github.com/enesdedeoglu/aractakip/actions/workflows/mail.yml';
 
   function mailPausedUntil() {
@@ -631,6 +707,8 @@
       const i = arr.indexOf(t.dataset.val);
       if (i >= 0) arr.splice(i, 1); else arr.push(t.dataset.val);
       update();
+    } else if (t.id === 'logoutBtn') {
+      logout();
     } else if (t.id === 'mailBtn') {
       openMailDlg();
     } else if (t.id === 'mailClose') {

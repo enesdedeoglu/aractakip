@@ -9,6 +9,18 @@
   <link rel="stylesheet" href="styles.css?v=__BUILD__">
 </head>
 <body>
+  <div class="login" id="login" hidden>
+    <form class="login-box" id="loginForm" autocomplete="on">
+      <span class="logo" aria-hidden="true"></span>
+      <h1>Tesla İlan Takip</h1>
+      <p class="sub">Bu sayfa şifreli. Devam etmek için site şifreni gir.</p>
+      <input type="text" name="username" value="aractakip" autocomplete="username" hidden>
+      <input type="password" id="loginPass" autocomplete="current-password" placeholder="Şifre" required>
+      <label class="chk"><input type="checkbox" id="loginRemember" checked> Bu cihazda açık kalsın</label>
+      <button class="btn primary" type="submit" id="loginBtn">Giriş</button>
+      <p class="login-err" id="loginErr" aria-live="polite"></p>
+    </form>
+  </div>
   <header class="topbar">
     <div class="brand">
       <span class="logo" aria-hidden="true"></span>
@@ -20,6 +32,7 @@
     <div class="top-actions">
       <span class="live" id="live" title="Otomatik yenileme"><i></i>canlı</span>
       <button class="btn ghost mail-btn" id="mailBtn" type="button" title="Mail bildirimlerini durdur / devam ettir">✉️ Mail</button>
+      <button class="btn ghost" id="logoutBtn" type="button" title="Bu cihazda oturumu kapat" hidden>Çıkış</button>
       <button class="btn ghost" id="notifyBtn" type="button">🔔 Bildirimleri aç</button>
     </div>
   </header>
