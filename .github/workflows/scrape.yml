@@ -12,7 +12,7 @@ on:
         default: auto
   push:
     branches: [main]
-    paths: ['data/db.json', 'web/**', '.github/workflows/scrape.yml']
+    paths: ['data/db.json', 'data/db.enc.json', 'web/**', '.github/workflows/scrape.yml']
 
 permissions:
   contents: write
