@@ -47,7 +47,7 @@ function pickMode(requested, name, db, fullEveryMin) {
   return Date.now() - last > fullEveryMin * MIN ? 'full' : 'quick';
 }
 
-export async function runCycle({ mode = 'auto', sources, runner = 'local', dry = false, extraScans = [], codeVersion = null } = {}) {
+export async function runCycle({ mode = 'auto', sources, runner = 'local', dry = false, extraScans = [], codeVersion = null, agentInfo = null } = {}) {
   const settings = loadSettings();
   const store = openStore();
   let { db, version } = await store.load();
@@ -87,6 +87,8 @@ export async function runCycle({ mode = 'auto', sources, runner = 'local', dry =
       return { db: work, changes };
     }
     work.savedAt = new Date().toISOString();
+    // Uzaktan tanı: cihazın son kayıt satırları ve durumu (veri şifreli olduğu için güvenli)
+    if (agentInfo) (work.agents ||= {})[runner] = { at: work.savedAt, ...agentInfo() };
     try {
       await store.save(work, version, `veri: ${summary} [${scans.map((s) => s.source + (s.ok ? '' : '✗')).join(',')}] (${runner})`);
     } catch (e) {

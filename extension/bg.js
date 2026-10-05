@@ -49,7 +49,14 @@ async function open(url) {
   }
   let tab = await ourTab();
   if (tab) { await api.tabs.update(tab.id, { url }); return; }
-  tab = await api.tabs.create({ url, pinned: true, active: false });
+  try {
+    tab = await api.tabs.create({ url, pinned: true, active: false });
+  } catch (e) {
+    // Chrome açık ama hiç penceresi yok ("No current window"): küçültülmüş ayrı bir pencere aç
+    if (!api.windows) throw e;
+    const win = await api.windows.create({ url, focused: false, state: 'minimized' });
+    tab = win.tabs[0];
+  }
   await set({ tabId: tab.id });
 }
 

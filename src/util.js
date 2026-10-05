@@ -66,6 +66,12 @@ export function parseTrDate(s) {
 
 export const nowIso = () => new Date().toISOString();
 
+// Son kayıt satırları (uzaktan tanı için ortak kayda yazılır)
+export const recentLog = [];
+
 export function log(...args) {
-  console.log(`[${new Date().toLocaleTimeString('tr-TR')}]`, ...args);
+  const line = `[${new Date().toLocaleTimeString('tr-TR')}] ${args.map((a) => (typeof a === 'string' ? a : JSON.stringify(a))).join(' ')}`;
+  recentLog.push(line);
+  if (recentLog.length > 40) recentLog.shift();
+  console.log(line);
 }

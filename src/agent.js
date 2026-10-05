@@ -17,7 +17,7 @@ import { createBridge } from './bridge.js';
 import { openStore } from './store.js';
 import { setMailPause } from './prefs.js';
 import { notifyDesktop } from './notify.js';
-import { log, sleep } from './util.js';
+import { log, sleep, recentLog } from './util.js';
 
 const LOCK = path.join(os.homedir(), '.aractakip', 'agent.lock');
 const PORT = Number(process.env.AGENT_PORT || 5174);
@@ -75,7 +75,7 @@ const bridge = createBridge({
   onScan: (scan) => {
     log(`eklenti: ${scan.source} ${scan.mode} – ${scan.listings.length} ilan${scan.complete ? ' (tam)' : ''}`);
     return serial(async () => {
-      const res = await runCycle({ sources: [], runner: RUNNER, codeVersion: VERSION, extraScans: [{ ok: true, ...scan, runner: RUNNER }] });
+      const res = await runCycle({ sources: [], runner: RUNNER, codeVersion: VERSION, agentInfo, extraScans: [{ ok: true, ...scan, runner: RUNNER }] });
       if (res?.db) latestDb = res.db;
     });
   },
@@ -181,6 +181,9 @@ function startAutoUpdate() {
   }, 30 * 60000);
 }
 
+// Uzaktan tanı için ortak kayda yazılan özet
+const agentInfo = () => ({ v: VERSION, platform: process.platform, bridge: bridge.status(), log: recentLog.slice(-25) });
+
 const lastRun = {};
 
 async function main() {
@@ -200,7 +203,7 @@ async function main() {
     const due = sources.filter((s) => Date.now() - (lastRun[s] || 0) >= (minIntervals[s] ?? intervalMinutes) * 60000 - 5000);
     if (due.length) {
       await serial(async () => {
-        const res = await runCycle({ mode: 'auto', sources: due, runner: RUNNER, codeVersion: VERSION });
+        const res = await runCycle({ mode: 'auto', sources: due, runner: RUNNER, codeVersion: VERSION, agentInfo });
         if (res?.db) latestDb = res.db;
       });
       due.forEach((s) => { lastRun[s] = Date.now(); });

@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Tesla İlan Takip",
-  "version": "2.1.8",
+  "version": "2.1.9",
   "description": "sahibinden, arabam.com ve Borusan Next Tesla ilanlarını kendi Chrome'unuzdaki tek bir sabitlenmiş sekmede okuyup bilgisayardaki Tesla İlan Takip ajanına iletir.",
   "permissions": ["alarms", "tabs", "storage"],
   "host_permissions": [
