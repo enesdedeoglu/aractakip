@@ -107,10 +107,12 @@ function startServer() {
     req.on('data', (c) => { body += c; if (body.length > 12e6) req.destroy(); });
     req.on('end', () => {
       let msg;
-      try { msg = JSON.parse(body); } catch { res.writeHead(400).end(); return; }
+      try { msg = JSON.parse(body); } catch (e) { log(`eklenti sayfası okunamadı (${Math.round(body.length / 1024)} KB): ${e.message}`); res.writeHead(400).end(); return; }
       json(202, {});
+      if (process.env.ARACTAKIP_DEBUG) log(`eklenti sayfası geldi: ${msg.kind || (msg.challenge ? 'doğrulama' : '?')} ${Math.round(body.length / 1024)} KB ${String(msg.url || '').slice(0, 80)}`);
       bridge.page(msg).catch((e) => log('eklenti sayfa hatası:', e.message));
     });
+    req.on('error', (e) => log('eklenti isteği hatası:', e.message));
   });
   server.on('error', (e) => log('Eklenti sunucusu başlatılamadı:', e.message));
   server.listen(PORT, '127.0.0.1', () => log(`Eklenti uç noktası: http://127.0.0.1:${PORT}`));
