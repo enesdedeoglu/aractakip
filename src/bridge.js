@@ -48,12 +48,14 @@ export function createBridge({ onScan, needDetail, onChallenge, shared = () => (
   const jitter = {};
   const timeouts = {};
   const pausedUntil = {};
+  const fullPausedUntil = {};
   const due = (task, every) => {
     const span = every * MIN * (jitter[task] ??= 0.85 + Math.random() * 0.3);
     if (Date.now() - (last[task] || 0) < span) return false;
     const src = SOURCE_OF[task];
     if (src) {
       if ((pausedUntil[src] || 0) > Date.now()) return false;
+      if (task.endsWith('Full') && (fullPausedUntil[src] || 0) > Date.now()) return false;
       const st = shared(src) || {};
       // Engel o siteyi engelli gören cihaza özel (ör. Mac'teki tarayıcı oturumu); eski ortak kayıt da geçerli
       if (Date.parse(st.blocks?.[runner]) > Date.now() || Date.parse(st.blockedUntil) > Date.now()) return false;
@@ -97,13 +99,18 @@ export function createBridge({ onScan, needDetail, onChallenge, shared = () => (
     if (inflight && Date.now() - inflight.at < (iv.pageTimeout || 2.5) * MIN) return null;
     if (inflight) {
       log(`eklenti: ${inflight.task} zaman aşımı`);
-      const src = inflight.task === 'crawl' ? crawl?.source : SOURCE_OF[inflight.task];
-      if (crawl && inflight.task === 'crawl') { last[crawl.source] = Date.now(); crawl = null; }
+      const wasCrawl = inflight.task === 'crawl';
+      const src = wasCrawl ? crawl?.source : SOURCE_OF[inflight.task];
+      if (crawl && wasCrawl) { last[crawl.source] = Date.now(); crawl = null; }
       else last[inflight.task] = Date.now();
       inflight = null;
-      // Sayfa üst üste cevap vermiyorsa bu cihazda o siteyi 1 saat beklet (yalnızca yerel: sebep cihazın
-      // yavaşlığı da olabilir; ortak engel yalnızca sitenin engel sayfası görülünce konur)
-      if (src) {
+      if (wasCrawl && src) {
+        // Tam tarama yanıt vermediyse yalnızca tam taramayı ertele; hızlı tarama (yeni ilanlar) sürsün
+        fullPausedUntil[src] = Date.now() + 6 * 60 * MIN;
+        log(`⏸ ${src}: tam tarama yanıt vermedi – bu cihazda 6 saat ertelendi, hızlı tarama devam ediyor`);
+      } else if (src) {
+        // Sayfa üst üste cevap vermiyorsa bu cihazda o siteyi 1 saat beklet (yalnızca yerel: sebep cihazın
+        // yavaşlığı da olabilir; ortak engel yalnızca sitenin engel sayfası görülünce konur)
         timeouts[src] = (timeouts[src] || 0) + 1;
         if (timeouts[src] >= 2) {
           timeouts[src] = 0;

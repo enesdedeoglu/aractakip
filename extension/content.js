@@ -2,7 +2,9 @@
 // Yalnızca eklentinin kendi sabitlenmiş sekmesindeki sayfalar ajana gönderilir (arka plan kontrol eder).
 (() => {
   const api = globalThis.browser ?? globalThis.chrome;
-  const send = (msg) => api.runtime.sendMessage({ ...msg, url: location.href }).catch(() => {});
+  // Büyük sayfa gönderilemezse küçük bir tanı mesajıyla ajana bildir
+  const send = (msg) => api.runtime.sendMessage({ ...msg, url: location.href }).catch((e) =>
+    api.runtime.sendMessage({ type: 'diag', where: 'content', error: `${host} ${msg.kind || ''} ${Math.round(JSON.stringify(msg).length / 1024)} KB gönderilemedi: ${e && e.message}` }).catch(() => {}));
   const host = location.host;
   const isChallenge = () =>
     /\/cs\/|tloading/.test(location.pathname) ||

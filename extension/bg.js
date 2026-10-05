@@ -41,6 +41,7 @@ async function open(url) {
     // Tablet bu işe ayrıldığından sayfa doğrudan öndeki sekmede açılır.
     let [tab] = await api.tabs.query({ active: true, currentWindow: true });
     if (!tab) tab = await api.tabs.create({ url });
+    else if (tab.url === url) await api.tabs.reload(tab.id); // aynı adres: güncelleme sayfayı yenilemeyebilir
     else await api.tabs.update(tab.id, { url });
     const { tabId } = await get();
     if (tabId !== tab.id) report('info', `takip sekmesi: ${tab.id}`);
@@ -85,13 +86,20 @@ async function tick() {
 
 api.runtime.onMessage.addListener((msg, sender) => {
   if (msg.type === 'tick') { tick(); return; }
+  if (msg.type === 'diag') { report(msg.where || 'diag', msg.error); return; }
   (async () => {
     const { tabId } = await get();
     if (!sender.tab || sender.tab.id !== tabId) return; // yalnızca kendi sekmemiz
     if (msg.challenge) await badge('!', '#e82127');
     else await badge('', '#11804a');
     await set({ lastPage: Date.now(), lastKind: msg.kind || (msg.challenge ? 'doğrulama' : '?') });
-    await fetch(`${AGENT}/page`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(msg) }).catch(() => {});
+    const body = JSON.stringify(msg);
+    try {
+      const r = await fetch(`${AGENT}/page`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body });
+      if (!r.ok) report('post', `${msg.kind || ''} ${Math.round(body.length / 1024)} KB → HTTP ${r.status}`);
+    } catch (e) {
+      report('post', `${msg.kind || ''} ${Math.round(body.length / 1024)} KB gönderilemedi: ${e.message}`);
+    }
     tick(); // sıradaki sayfa hazırsa beklemeden geç
   })();
 });
