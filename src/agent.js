@@ -103,6 +103,10 @@ function startServer() {
       return;
     }
     if (req.method !== 'POST' || req.url !== '/page') { res.writeHead(404).end(); return; }
+    if (process.env.ARACTAKIP_DEBUG) {
+      log(`/page isteği başladı: ${req.headers['content-length'] || '?'} bayt`);
+      req.on('aborted', () => log('/page isteği yarıda kesildi'));
+    }
     let body = '';
     req.on('data', (c) => { body += c; if (body.length > 12e6) req.destroy(); });
     req.on('end', () => {
