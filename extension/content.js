@@ -66,6 +66,10 @@
   const read = readers[host];
   if (!read) return;
 
+  // arabam için adım adım tanı (yalnızca küçük metin mesajları; sorun çözülünce kaldırılabilir)
+  const diag = (t) => host === 'www.arabam.com' && api.runtime.sendMessage({ type: 'diag', where: 'arabam', error: t }).catch(() => {});
+  diag(`betik çalıştı: ${location.href.slice(0, 90)} durum=${document.readyState} satır=${document.querySelectorAll('tr.listing-list-item').length}`);
+
   // Sitenin "olağan dışı erişim" engel sayfası: beklemeden bildir, ajan o siteyi saatlerce bekletir
   if (/olağan\s*dışı\s*erişim|olağandışı erişim|unusual (traffic|access)/i.test((document.body?.innerText || '').slice(0, 2000))) {
     send({ challenge: true, blocked: true });
@@ -76,11 +80,15 @@
   const attempt = () => {
     if (isChallenge()) {
       // Cloudflare'in otomatik kontrolü birkaç saniyede kendiliğinden geçer; geçmezse bildir
+      if (tries === 0) diag(`doğrulama sanıldı: başlık="${document.title.slice(0, 60)}" metin="${(document.body?.innerText || '').slice(0, 120).replace(/\s+/g, ' ')}"`);
       if (++tries <= 6) return setTimeout(attempt, 3000);
       send({ challenge: true });
       return;
     }
-    if (!read() && ++tries <= 6) setTimeout(attempt, 2500);
+    const ok = read();
+    if (ok) { diag('okundu ve gönderildi'); return; }
+    if (++tries <= 6) setTimeout(attempt, 2500);
+    else diag(`okunamadı: satır=${document.querySelectorAll('tr.listing-list-item').length} tr=${document.querySelectorAll('tr').length} başlık="${document.title.slice(0, 60)}"`);
   };
   attempt();
 })();
