@@ -2,7 +2,7 @@
 // Eklenti, kullanıcının kendi Chrome'unda tek bir sabitlenmiş sekme kullanır: ajandan sıradaki adresi
 // ister (GET /next), sekmede açar, sayfa içeriğini geri gönderir (POST /page). Hangi sayfanın ne zaman
 // açılacağına ve sayfaların nasıl işleneceğine burada karar verilir.
-import { parseList as parseArabamList, parseDetail as parseArabamDetail, kmFromTitle } from './sources/arabam.js';
+import { parseList as parseArabamList, fromRows as arabamFromRows, parseDetail as parseArabamDetail, kmFromTitle } from './sources/arabam.js';
 import { parseNextData as parseBorusan, toListing as borusanListing } from './sources/borusan.js';
 import { normalize as normalizeSahibinden, pickImage, isFakeRow } from './sources/sahibinden.js';
 import { log } from './util.js';
@@ -146,7 +146,7 @@ export function createBridge({ onScan, needDetail, onChallenge, shared = () => (
     return pick.url;
   }
 
-  async function page({ url, kind, html, nextData, heads, rows, total, challenge, blocked }) {
+  async function page({ url, kind, html, arows, nextData, heads, rows, total, challenge, blocked }) {
     lastSeen = Date.now();
     const task = inflight?.task;
     const hostSrc = /sahibinden/.test(url) ? 'sahibinden' : /arabam/.test(url) ? 'arabam' : /borusan/.test(url) ? 'borusan' : null;
@@ -195,7 +195,7 @@ export function createBridge({ onScan, needDetail, onChallenge, shared = () => (
         if (noImg.length && !loggedNoImg++) log(`sahibinden: ${noImg.length} satırda fotoğraf bulunamadı, örnek:`, JSON.stringify({ id: noImg[0].id, image: noImg[0].image, images: noImg[0].images, imgHtml: noImg[0].imgHtml }).slice(0, 900));
         return onScan({ source: 'sahibinden', listings: normalizeSahibinden([pg]), complete: false, mode: 'quick' });
       }
-      if (host.endsWith('arabam.com') && html) {
+      if (host.endsWith('arabam.com') && (html || arows)) {
         if (/\/ilan\//.test(new URL(url).pathname)) {
           done();
           const id = (url.match(/\/(\d+)(?:[?#].*)?$/) || [])[1];
@@ -203,7 +203,8 @@ export function createBridge({ onScan, needDetail, onChallenge, shared = () => (
           const detail = parseArabamDetail(html);
           return onScan({ source: 'arabam', listings: [{ source: 'arabam', sourceId: id, ...detail, detailAt: new Date().toISOString() }], complete: false, mode: 'detail' });
         }
-        const { listings, rowCount } = parseArabamList(html);
+        // Yeni eklenti satırları sayfada ayrıştırıp gönderir (küçük veri); eski sürüm tüm HTML'i
+        const { listings, rowCount } = arows ? arabamFromRows(arows) : parseArabamList(html);
         listings.forEach((l) => { if (l.km == null) l.km = kmFromTitle(l.title); });
         if (task === 'crawl' && crawl?.source === 'arabam') {
           crawl.pages.push(...listings);

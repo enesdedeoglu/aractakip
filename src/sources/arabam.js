@@ -13,42 +13,55 @@ function bigImage(src) {
   return src.replace(/_\d+x\d+\.jpg$/, '_580x435.jpg');
 }
 
+// Tek satırın yapısal hali (sayfada eklenti tarafından ya da burada cheerio ile çıkarılır)
+//   { id, href, modelName, title, cells: string[], priceText, locs: string[], image }
+function rowToListing(r) {
+  if (!/^tesla\b/i.test(r.modelName || '')) return null; // metin aramasında çıkan alakasız ilanlar
+  const cells = (r.cells || []).map((c) => String(c).replace(/\s+/g, ' ').trim());
+  const href = r.href || '';
+  const dateCell = cells.find((c) => /\d{1,2}\s+\S+\s+\d{4}$/.test(c));
+  const sellerSlug = (href.match(/^\/ilan\/([a-z-]+?)-satilik-/) || [])[1] || '';
+  return {
+    source: 'arabam',
+    sourceId: String(r.id),
+    url: BASE + href,
+    title: (r.title || '').trim(),
+    modelRaw: r.modelName.trim(),
+    year: Number(cells.find((c) => /^(19|20)\d{2}$/.test(c))) || null,
+    km: parseNumber(cells.find((c) => /^[\d.]+\s*KM$/i.test(c))),
+    price: parseNumber(r.priceText),
+    city: r.locs?.[0] || null,
+    district: r.locs?.[1] || null,
+    sellerType: sellerSlug === 'sahibinden' ? 'sahibinden' : sellerSlug === 'yetkili-bayiden' ? 'yetkili' : 'galeri',
+    image: bigImage(r.image),
+    publishedAt: parseTrDate(dateCell),
+    needsDetail: true,
+  };
+}
+
+/** Eklentinin sayfada çıkardığı satırlar (küçük veri) */
+export function fromRows(rows) {
+  const listings = (rows || []).map(rowToListing).filter(Boolean);
+  return { listings, rowCount: (rows || []).length };
+}
+
 export function parseList(html) {
   const $ = cheerio.load(html);
-  const out = [];
-  $('tr.listing-list-item[id^="listing"]').each((_, tr) => {
+  const rows = $('tr.listing-list-item[id^="listing"]').map((_, tr) => {
     const row = $(tr);
-    const id = row.attr('data-imp-id') || row.attr('id').replace('listing', '');
-    const modelName = row.find('td.listing-modelname .listing-text-new').first().text().trim();
-    if (!/^tesla\b/i.test(modelName)) return; // metin aramasında çıkan alakasız ilanlar
-    const href = row.find('a[href^="/ilan/"]').first().attr('href') || '';
-    const title = row.find('.listing-title-lines').first().text().trim();
-    const cells = row.find('td').map((_, td) => $(td).text().replace(/\s+/g, ' ').trim()).get();
-    const year = Number(cells.find((c) => /^(19|20)\d{2}$/.test(c))) || null;
-    const km = parseNumber(cells.find((c) => /^[\d.]+\s*KM$/i.test(c)));
-    const price = parseNumber(row.find('.listing-price').first().text());
-    const dateCell = cells.find((c) => /\d{1,2}\s+\S+\s+\d{4}$/.test(c));
-    const locSpans = row.find('span[title]').map((_, s) => $(s).attr('title')).get();
-    const sellerSlug = (href.match(/^\/ilan\/([a-z-]+?)-satilik-/) || [])[1] || '';
-    out.push({
-      source: 'arabam',
-      sourceId: id,
-      url: BASE + href,
-      title,
-      modelRaw: modelName,
-      year,
-      km,
-      price,
-      city: locSpans[0] || null,
-      district: locSpans[1] || null,
-      sellerType: sellerSlug === 'sahibinden' ? 'sahibinden' : sellerSlug === 'yetkili-bayiden' ? 'yetkili' : 'galeri',
-      image: bigImage(row.find('img.listing-image').attr('data-src') || row.find('img.listing-image').attr('src')),
-      publishedAt: parseTrDate(dateCell),
-      needsDetail: true,
-    });
-  });
-  const rowCount = $('tr.listing-list-item[id^="listing"]').length;
-  return { listings: out, rowCount };
+    const img = row.find('img.listing-image');
+    return {
+      id: row.attr('data-imp-id') || row.attr('id').replace('listing', ''),
+      href: row.find('a[href^="/ilan/"]').first().attr('href') || '',
+      modelName: row.find('td.listing-modelname .listing-text-new').first().text().trim(),
+      title: row.find('.listing-title-lines').first().text().trim(),
+      cells: row.find('td').map((_, td) => $(td).text()).get(),
+      priceText: row.find('.listing-price').first().text(),
+      locs: row.find('span[title]').map((_, sp) => $(sp).attr('title')).get(),
+      image: img.attr('data-src') || img.attr('src'),
+    };
+  }).get();
+  return fromRows(rows);
 }
 
 /** Detay sayfasından hasar/boya/tramer ve teknik bilgiler. */

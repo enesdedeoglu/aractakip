@@ -89,7 +89,13 @@ api.runtime.onMessage.addListener((msg, sender) => {
   if (msg.type === 'diag') { report(msg.where || 'diag', msg.error); return; }
   (async () => {
     const { tabId } = await get();
-    if (!sender.tab || sender.tab.id !== tabId) return; // yalnızca kendi sekmemiz
+    if (!sender.tab || sender.tab.id !== tabId) { // yalnızca kendi sekmemiz
+      if (msg.kind && Date.now() - (globalThis.lastForeignReport || 0) > 10 * 60000) {
+        globalThis.lastForeignReport = Date.now();
+        report('info', `başka sekmeden gelen ${msg.kind} sayfası yok sayıldı (sekme ${sender.tab?.id}, takip ${tabId})`);
+      }
+      return;
+    }
     if (msg.challenge) await badge('!', '#e82127');
     else await badge('', '#11804a');
     await set({ lastPage: Date.now(), lastKind: msg.kind || (msg.challenge ? 'doğrulama' : '?') });

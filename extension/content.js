@@ -42,9 +42,25 @@
 
   function arabam() {
     // Sayfanın tamamı (~1,3 MB) yerine yalnızca gereken parçalar: ilan satırları veya detay verisi
-    const rows = [...document.querySelectorAll('tr.listing-list-item')];
+    // Liste satırları sayfada ayrıştırılır; yalnızca gerekli alanlar gönderilir (~25 KB).
+    // (Tüm satır HTML'i ~360 KB; Android'deki Firefox bu büyüklükteki mesajları sessizce düşürüyor.)
+    const rows = [...document.querySelectorAll('tr.listing-list-item[id^="listing"]')];
     if (rows.length) {
-      send({ kind: 'arabam', html: `<table><tbody>${rows.map((r) => r.outerHTML).join('')}</tbody></table>` });
+      const arows = rows.map((tr) => {
+        const img = tr.querySelector('img.listing-image');
+        const a = tr.querySelector('a[href^="/ilan/"]');
+        return {
+          id: tr.getAttribute('data-imp-id') || tr.id.replace('listing', ''),
+          href: a ? a.getAttribute('href') : '',
+          modelName: (tr.querySelector('td.listing-modelname .listing-text-new')?.textContent || '').trim(),
+          title: (tr.querySelector('.listing-title-lines')?.textContent || '').trim(),
+          cells: [...tr.querySelectorAll('td')].map((td) => td.textContent.replace(/\s+/g, ' ').trim().slice(0, 200)),
+          priceText: tr.querySelector('.listing-price')?.textContent || '',
+          locs: [...tr.querySelectorAll('span[title]')].map((sp) => sp.getAttribute('title')),
+          image: img ? img.getAttribute('data-src') || img.getAttribute('src') : null,
+        };
+      });
+      send({ kind: 'arabam', arows });
       return true;
     }
     const scripts = [...document.scripts].map((sc) => sc.textContent).filter((t) => /DamageInfo|"Key":"Marka"/.test(t));

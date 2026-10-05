@@ -161,3 +161,23 @@ test('şifreli veri: Node şifreler, tarayıcı (WebCrypto) çözer; yanlış ş
   const text = await new Response(new Blob([plain]).stream().pipeThrough(new DecompressionStream('gzip'))).text();
   assert.deepEqual(JSON.parse(text), db);
 });
+
+import { fromRows } from '../src/sources/arabam.js';
+
+test('arabam: eklentinin sayfada çıkardığı küçük satırlar', () => {
+  const { listings, rowCount } = fromRows([
+    { id: '44025870', href: '/ilan/sahibinden-satilik-tesla-model-y-performance-legacy/x/44025870', modelName: 'Tesla Model Y Performance (Legacy)', title: 'HATASIZ 49bin km',
+      cells: ['', 'Tesla Model Y Performance (Legacy)', 'HATASIZ 49bin km', '2023', '49.900 KM', 'Siyah', '2.800.000 TL 2.710.000 TL', '15 Eylül 2026', 'Muğla Bodrum Karşılaştır'],
+      priceText: '\n 2.710.000 TL\n', locs: ['Muğla', 'Bodrum'], image: 'https://arbstorage.mncdn.com/a/b_image_for_silan_1_240x180.jpg' },
+    { id: '1', href: '/ilan/galeriden-satilik-renault-clio/x/1', modelName: 'Renault Clio', title: 'tesla ekranlı', cells: [], priceText: '700.000 TL', locs: [] },
+  ]);
+  assert.equal(rowCount, 2);
+  assert.equal(listings.length, 1, 'Tesla olmayan satır atlanır');
+  const l = listings[0];
+  assert.equal(l.price, 2710000, 'indirimli ilanda güncel fiyat');
+  assert.equal(l.km, 49900);
+  assert.equal(l.year, 2023);
+  assert.equal(l.city, 'Muğla');
+  assert.equal(l.sellerType, 'sahibinden');
+  assert.match(l.image, /_580x435\.jpg$/);
+});
