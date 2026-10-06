@@ -65,7 +65,8 @@ export function createBridge({ onScan, needDetail, onChallenge, shared = () => (
       // asıl tarayıcı kapanırsa 3 tur sonra yedek cihaz devralır
       if (primary && runner !== primary) {
         const pr = st.runs?.[primary];
-        if (pr && Date.now() - Date.parse(pr.lastRun) < 3 * every * MIN) return false;
+        // Ortak kayıt en sık ~10 dk'da bir yazıldığı için pencere en az 30 dk (kısa aralıklı sitelerde yanlış devralmayı önler)
+        if (pr && Date.now() - Date.parse(pr.lastRun) < Math.max(3 * every, 30) * MIN) return false;
       }
       // Sahiplik: siteyi başka bir cihaz düzenli tarıyorsa ona bırak; 3 tur taramazsa devral.
       // O cihaz daha eski kodla çalışıyorsa (ör. güncellenmemiş tablet) güncel cihaz devralır.
