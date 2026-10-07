@@ -187,6 +187,27 @@ function startAutoUpdate() {
   }, 30 * 60000);
 }
 
+// Site yayını bekçisi: GitHub bazen Pages yayınını "waiting" durumunda (onay gerekmediği halde)
+// süresiz bekletiyor; sıra kilitlendiği için sonraki tüm yayınlar iptal oluyor ve site eskide kalıyor.
+// 20 dakikadan uzun bekleyen yayını zorla iptal et; sıradaki yayın kendiliğinden başlar.
+function startDeployWatchdog() {
+  const store = (() => { try { return openStore(); } catch { return null; } })();
+  if (store?.kind !== 'github') return;
+  const check = async () => {
+    try {
+      const res = await store.api('/actions/runs?status=waiting&per_page=20');
+      if (!res.ok) return;
+      for (const run of (await res.json()).workflow_runs || []) {
+        if (Date.now() - Date.parse(run.run_started_at || run.created_at) < 20 * 60000) continue;
+        const r = await store.api(`/actions/runs/${run.id}/force-cancel`, { method: 'POST' });
+        log(`Site yayını ${Math.round((Date.now() - Date.parse(run.created_at)) / 60000)} dk takılı kalmıştı: ${r.ok ? 'iptal edildi' : `iptal edilemedi (HTTP ${r.status})`}`);
+      }
+    } catch { /* ağ hatası: sonraki denemede */ }
+  };
+  check();
+  setInterval(check, 15 * 60000);
+}
+
 // Uzaktan tanı için ortak kayda yazılan özet
 const agentInfo = () => ({ v: VERSION, platform: process.platform, bridge: bridge.status(), log: recentLog.slice(-25) });
 
@@ -203,6 +224,7 @@ async function main() {
   startServer();
   startUi();
   startAutoUpdate();
+  startDeployWatchdog();
   for (;;) {
     const { intervalMinutes, sources, minIntervals = {} } = loadSettings().agent;
     // Her kaynağın kendi en kısa tarama aralığı olabilir
