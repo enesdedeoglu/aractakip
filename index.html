@@ -1,0 +1,184 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Tesla İlan Takip</title>
+  <meta name="description" content="sahibinden, arabam.com, Otokoç ve Borusan Next'teki tüm Tesla ilanları: kategoriler, piyasa analizi ve tavsiyeler.">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23e82127'/%3E%3Cpath d='M6 10c6-3 14-3 20 0l-1.5 2c-1.6-.6-3.2-1-4.8-1.2L16 26l-3.7-15.2c-1.6.2-3.2.6-4.8 1.2z' fill='white'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="styles.css?v=dc14eb2b">
+</head>
+<body>
+  <div class="login" id="login" hidden>
+    <form class="login-box" id="loginForm" autocomplete="on">
+      <span class="logo" aria-hidden="true"></span>
+      <h1>Tesla İlan Takip</h1>
+      <p class="sub">Bu sayfa şifreli. Devam etmek için site şifreni gir.</p>
+      <input type="text" name="username" value="aractakip" autocomplete="username" hidden>
+      <input type="password" id="loginPass" autocomplete="current-password" placeholder="Şifre" required>
+      <label class="chk"><input type="checkbox" id="loginRemember" checked> Bu cihazda açık kalsın</label>
+      <button class="btn primary" type="submit" id="loginBtn">Giriş</button>
+      <p class="login-err" id="loginErr" aria-live="polite"></p>
+    </form>
+  </div>
+  <header class="topbar">
+    <div class="brand">
+      <span class="logo" aria-hidden="true"></span>
+      <div>
+        <h1>Tesla İlan Takip</h1>
+        <div class="sub" id="updated">yükleniyor…</div>
+      </div>
+    </div>
+    <div class="top-actions">
+      <span class="live" id="live" title="Otomatik yenileme"><i></i>canlı</span>
+      <button class="btn ghost mail-btn" id="mailBtn" type="button" title="Mail bildirimlerini durdur / devam ettir">✉️ Mail</button>
+      <button class="btn ghost" id="logoutBtn" type="button" title="Bu cihazda oturumu kapat" hidden>Çıkış</button>
+      <button class="btn ghost" id="notifyBtn" type="button">🔔 Bildirimleri aç</button>
+    </div>
+  </header>
+
+  <section class="stats" id="stats"></section>
+  <section class="sources" id="sources"></section>
+
+  <nav class="tabs" role="tablist">
+    <button role="tab" class="tab active" data-tab="listings">İlanlar</button>
+    <button role="tab" class="tab" data-tab="market">Piyasa</button>
+    <button role="tab" class="tab" data-tab="archive">Arşiv</button>
+    <button role="tab" class="tab" data-tab="feed">Akış</button>
+  </nav>
+
+  <main>
+    <section id="tab-listings" class="tabpane active">
+      <div class="models" id="modelChips"></div>
+      <div class="layout">
+        <aside class="filters" id="filters">
+          <button class="btn ghost only-mobile" id="toggleFilters" type="button">Filtreler ▾</button>
+          <div class="filter-body">
+            <label class="f"><span>Ara</span><input id="q" type="search" placeholder="başlık, şehir, galeri…"></label>
+            <label class="f"><span>Sırala</span>
+              <select id="sort">
+                <option value="score">Tavsiye puanı</option>
+                <option value="new">En yeni</option>
+                <option value="dev">Piyasaya göre en ucuz</option>
+                <option value="priceAsc">Fiyat (artan)</option>
+                <option value="priceDesc">Fiyat (azalan)</option>
+                <option value="km">Km (artan)</option>
+                <option value="year">Yıl (yeni→eski)</option>
+              </select>
+            </label>
+            <div class="f"><span>Etiket</span><div class="chips" id="fLabel"></div></div>
+            <div class="f"><span>Nesil</span><div class="chips" id="fGen"></div></div>
+            <div class="f"><span>Versiyon</span><div class="chips" id="fTrim"></div></div>
+            <div class="f"><span>Kaynak</span><div class="chips" id="fSource"></div></div>
+            <div class="f"><span>Satıcı</span><div class="chips" id="fSeller"></div></div>
+            <div class="f"><span>Ağır hasar kaydı</span><div class="chips" id="fHeavy"></div></div>
+            <div class="f two">
+              <label><span>Yıl min</span><input id="yMin" type="number" inputmode="numeric" placeholder="2019"></label>
+              <label><span>Yıl max</span><input id="yMax" type="number" inputmode="numeric" placeholder="2026"></label>
+            </div>
+            <div class="f two">
+              <label><span>Fiyat max (TL)</span><input id="pMax" type="number" inputmode="numeric" placeholder="3000000"></label>
+              <label><span>Km max</span><input id="kMax" type="number" inputmode="numeric" placeholder="80000"></label>
+            </div>
+            <label class="chk"><input type="checkbox" id="dedupe"> Farklı sitelerdeki aynı aracı tek göster</label>
+            <label class="chk"><input type="checkbox" id="onlyNew"> Son 24 saatte gelenler</label>
+            <label class="chk"><input type="checkbox" id="noDamage"> Hasar uyarısı olmayanlar</label>
+            <label class="chk"><input type="checkbox" id="hideReserved"> Opsiyonluları gizle</label>
+            <label class="chk"><input type="checkbox" id="onlyFav"> Sadece favoriler</label>
+            <label class="chk"><input type="checkbox" id="showRemoved"> Kalkan ilanları da göster</label>
+            <button class="btn ghost" id="reset" type="button">Filtreleri temizle</button>
+          </div>
+        </aside>
+        <div class="results">
+          <div class="result-head">
+            <span id="count"></span>
+            <label class="switch" title="Ağır hasar kaydı olan ilanları listeden çıkarır">
+              <input type="checkbox" id="hideHeavy" checked>
+              <span class="track"><span class="knob"></span></span>
+              Ağır hasar kayıtlıları gizle <small id="heavyCount"></small>
+            </label>
+          </div>
+          <div class="grid" id="grid"></div>
+          <button class="btn more" id="more" type="button" hidden>Daha fazla göster</button>
+        </div>
+      </div>
+    </section>
+
+    <section id="tab-market" class="tabpane">
+      <div class="panel">
+        <div class="panel-head">
+          <h2>Fiyat / Km dağılımı</h2>
+          <select id="scatterModel"></select>
+        </div>
+        <div id="scatter" class="scatter"></div>
+        <p class="hint">Her nokta bir ilan; renk tavsiye etiketini gösterir. Aynı km’de aşağıda kalan noktalar daha ucuzdur. Noktaya tıklayınca ilan açılır.</p>
+      </div>
+      <div class="panel">
+        <h2>Segment özeti</h2>
+        <div class="table-wrap"><table class="seg" id="segTable"></table></div>
+      </div>
+      <div class="panel">
+        <h2>Nasıl değerlendiriliyor?</h2>
+        <ul class="explain">
+          <li><b>Beklenen fiyat:</b> Tüm aktif Tesla ilanları üzerinde model, nesil (Legacy/Juniper, Klasik/Highland), versiyon, yıl ve km'ye göre kurulan regresyon modeli.</li>
+          <li><b>Puan (0-100):</b> Piyasaya göre fiyat farkı + tramer/boya/değişen + satıcı tipi + km/yıl + fiyat düşüşleri + ilanda kalma süresi.</li>
+          <li><b>Etiketler:</b> 🔥 Fırsat (≥72), 👍 İyi fiyat (58-71), ⚖️ Piyasa (42-57), 💸 Pahalı (&lt;42), ⚠️ Şüpheli (piyasanın %25+ altında, bireysel satıcı).</li>
+          <li>Bu bir istatistiksel tahmindir, yatırım tavsiyesi değildir. Almadan önce mutlaka ekspertiz ve batarya sağlığı (SOH) testi yaptırın.</li>
+        </ul>
+      </div>
+    </section>
+
+    <section id="tab-archive" class="tabpane">
+      <div class="panel">
+        <div class="panel-head">
+          <h2>Yayından kalkan ilanlar</h2>
+          <div class="arch-filters">
+            <select id="archModel"><option value="">Tüm modeller</option></select>
+            <select id="archDays">
+              <option value="30">Son 30 gün</option>
+              <option value="90" selected>Son 90 gün</option>
+              <option value="365">Son 1 yıl</option>
+            </select>
+            <input id="archQ" type="search" placeholder="ara…">
+          </div>
+        </div>
+        <p class="hint">Tam taramalarda artık görülmeyen ilanlar (satılmış ya da satıcı tarafından kaldırılmış olabilir). Aynı araç yeniden ilana konduysa bağlantısı gösterilir.</p>
+        <div class="table-wrap"><table class="seg" id="archSummary"></table></div>
+      </div>
+      <div class="panel">
+        <div class="table-wrap"><table class="seg arch" id="archTable"></table></div>
+      </div>
+    </section>
+
+    <section id="tab-feed" class="tabpane">
+      <div class="panel">
+        <h2>Son hareketler</h2>
+        <ol class="feed" id="feed"></ol>
+      </div>
+    </section>
+  </main>
+
+  <dialog id="detail" class="detail" aria-labelledby="dTitle">
+    <div class="d-head">
+      <div>
+        <h2 id="dTitle"></h2>
+        <div class="sub" id="dSub"></div>
+      </div>
+      <button class="btn ghost" id="dClose" type="button" aria-label="Kapat">✕</button>
+    </div>
+    <div id="dBody"></div>
+  </dialog>
+
+  <dialog id="mailDlg" class="detail small" aria-labelledby="mailTitle">
+    <div class="d-head">
+      <h2 id="mailTitle">Mail bildirimleri</h2>
+      <button class="btn ghost" id="mailClose" type="button" aria-label="Kapat">✕</button>
+    </div>
+    <p id="mailState" class="d-note"></p>
+    <div id="mailBody"></div>
+  </dialog>
+
+  <div class="toasts" id="toasts" aria-live="polite"></div>
+  <script src="app.js?v=dc14eb2b"></script>
+</body>
+</html>
