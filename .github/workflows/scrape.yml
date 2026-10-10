@@ -10,9 +10,7 @@ on:
       mode:
         description: 'Tarama modu (auto / quick / full / deploy)'
         default: auto
-  push:
-    branches: [main]
-    paths: ['data/db.json', 'data/db.enc.json', 'web/**', '.github/workflows/scrape.yml']
+  # Site artık ajan tarafından gh-pages dalına yayınlanıyor (src/publish.js); push tetikleyicisi kaldırıldı
 
 permissions:
   contents: write

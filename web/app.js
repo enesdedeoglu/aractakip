@@ -614,7 +614,8 @@
 
   // ---------- Mail bildirimleri: durdur / devam ----------
   const LOCAL = IS_LOCAL;
-  const WORKFLOW_URL = 'https://github.com/enesdedeoglu/aractakip/actions/workflows/mail.yml';
+  // Siteden (GitHub Pages) değiştirmek için: başlığı hazır bir GitHub issue'su açılır, ajan birkaç dakikada uygular
+  const issueUrl = (title) => `https://github.com/enesdedeoglu/aractakip/issues/new?title=${encodeURIComponent(title)}&body=${encodeURIComponent('Bu issue\'yu oluşturman yeterli; tablet veya Mac ajanı birkaç dakika içinde uygulayıp kapatır.')}`;
 
   function mailPausedUntil() {
     const u = state.db?.prefs?.mailPausedUntil;
@@ -642,11 +643,13 @@
         ? '<div class="mail-actions"><button class="btn primary" data-mail="devam" type="button">Maili yeniden başlat</button></div>'
         : `<div class="mail-actions">${['1 gün', '3 gün', '1 hafta', 'süresiz'].map((d) => `<button class="btn" data-mail="durdur" data-dur="${d}" type="button">${d} durdur</button>`).join('')}</div>`;
     } else {
-      $('#mailBody').innerHTML = `<ol class="steps">
-        <li><a href="${WORKFLOW_URL}" target="_blank" rel="noopener"><b>GitHub'daki "Mail bildirimleri" sayfasını aç ↗</b></a> (GitHub hesabınla giriş yapmış olmalısın – bu ayarı yalnızca sen değiştirebilirsin)</li>
-        <li>Sağdaki <b>Run workflow</b> düğmesine bas.</li>
-        <li><b>${p ? 'devam' : 'durdur'}</b>${p ? '' : ' ve süreyi'} seç, yeşil <b>Run workflow</b> ile onayla.</li>
-        <li>1–2 dakika içinde bu sayfada durum güncellenir.</li>
+      $('#mailBody').innerHTML = `<div class="mail-actions">${p
+        ? `<a class="btn primary" href="${issueUrl('mail devam')}" target="_blank" rel="noopener">Maili yeniden başlat ↗</a>`
+        : ['1 gün', '3 gün', '1 hafta', 'süresiz'].map((d) => `<a class="btn" href="${issueUrl(`mail durdur ${d}`)}" target="_blank" rel="noopener">${d} durdur ↗</a>`).join('')}</div>
+      <ol class="steps">
+        <li>Yukarıdan seçince GitHub'da başlığı hazır bir sayfa açılır (GitHub hesabınla giriş yapmış olmalısın – bu ayarı yalnızca sen değiştirebilirsin).</li>
+        <li>Yeşil <b>Create</b> düğmesine bas.</li>
+        <li>Tablet veya Mac ajanı 2 dakika içinde uygular; sitede durum birkaç dakikada güncellenir.</li>
       </ol>
       <p class="hint">Bilgisayarında veya tablette <code>127.0.0.1:5173</code> adresinden açarsan tek tıkla değiştirebilirsin.</p>`;
     }

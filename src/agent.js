@@ -15,7 +15,8 @@ import { loadSettings } from './settings.js';
 import { closeContext } from './browser.js';
 import { createBridge } from './bridge.js';
 import { openStore } from './store.js';
-import { setMailPause } from './prefs.js';
+import { setMailPause, DURATIONS } from './prefs.js';
+import { publishSite } from './publish.js';
 import { notifyDesktop } from './notify.js';
 import { log, sleep, recentLog } from './util.js';
 
@@ -187,25 +188,52 @@ function startAutoUpdate() {
   }, 30 * 60000);
 }
 
-// Site yayını bekçisi: GitHub bazen Pages yayınını "waiting" durumunda (onay gerekmediği halde)
-// süresiz bekletiyor; sıra kilitlendiği için sonraki tüm yayınlar iptal oluyor ve site eskide kalıyor.
-// 20 dakikadan uzun bekleyen yayını zorla iptal et; sıradaki yayın kendiliğinden başlar.
-function startDeployWatchdog() {
+// Site yayını (GitHub Actions yerine): 2 dakikada bir dene; gh-pages en sık 6 dakikada bir güncellenir
+function startSitePublisher() {
   const store = (() => { try { return openStore(); } catch { return null; } })();
   if (store?.kind !== 'github') return;
+  let lastErr = '';
+  const tick = () => serial(async () => {
+    try {
+      const r = await publishSite({ store });
+      if (r.published) log(`Site yayınlandı (${r.commit.slice(0, 7)})`);
+      lastErr = '';
+    } catch (e) {
+      if (e.message !== lastErr) log('Site yayınlanamadı:', e.message);
+      lastErr = e.message;
+    }
+  });
+  setTimeout(tick, 20_000);
+  setInterval(tick, 2 * 60000);
+}
+
+// Sitedeki mail düğmesi (GitHub'da değilken) depo sahibinin açtığı "mail durdur 1 gün" / "mail devam"
+// başlıklı bir issue oluşturur; ajan bunu uygulayıp issue'yu kapatır.
+function startRemoteCommands() {
+  const store = (() => { try { return openStore(); } catch { return null; } })();
+  if (store?.kind !== 'github') return;
+  const owner = store.repo.split('/')[0];
   const check = async () => {
     try {
-      const res = await store.api('/actions/runs?status=waiting&per_page=20');
+      const res = await store.api(`/issues?state=open&creator=${owner}&per_page=20`);
       if (!res.ok) return;
-      for (const run of (await res.json()).workflow_runs || []) {
-        if (Date.now() - Date.parse(run.run_started_at || run.created_at) < 20 * 60000) continue;
-        const r = await store.api(`/actions/runs/${run.id}/force-cancel`, { method: 'POST' });
-        log(`Site yayını ${Math.round((Date.now() - Date.parse(run.created_at)) / 60000)} dk takılı kalmıştı: ${r.ok ? 'iptal edildi' : `iptal edilemedi (HTTP ${r.status})`}`);
+      for (const is of await res.json()) {
+        const m = !is.pull_request && is.author_association === 'OWNER' && is.title.trim().toLocaleLowerCase('tr-TR').match(/^mail\s+(durdur|devam)\s*(.*)$/);
+        if (!m) continue;
+        const action = m[1];
+        const duration = Object.hasOwn(DURATIONS, m[2].trim()) ? m[2].trim() : 'süresiz';
+        const prefs = await serial(() => setMailPause(action, duration, 'site'));
+        if (latestDb && prefs) latestDb.prefs = prefs;
+        const msg = action === 'devam' ? 'Mail bildirimleri yeniden başladı.' : `Mail bildirimleri durduruldu (${duration}).`;
+        log(msg, `(issue #${is.number})`);
+        await store.api(`/issues/${is.number}/comments`, { method: 'POST', body: JSON.stringify({ body: `✓ ${msg} (${RUNNER})` }) });
+        await store.api(`/issues/${is.number}`, { method: 'PATCH', body: JSON.stringify({ state: 'closed', state_reason: 'completed' }) });
+        await publishSite({ store, force: true }).catch(() => {});
       }
-    } catch { /* ağ hatası: sonraki denemede */ }
+    } catch (e) { log('Mail komutu okunamadı:', e.message); }
   };
-  check();
-  setInterval(check, 15 * 60000);
+  setTimeout(check, 10_000);
+  setInterval(check, 2 * 60000);
 }
 
 // Uzaktan tanı için ortak kayda yazılan özet
@@ -224,7 +252,8 @@ async function main() {
   startServer();
   startUi();
   startAutoUpdate();
-  startDeployWatchdog();
+  startSitePublisher();
+  startRemoteCommands();
   for (;;) {
     const { intervalMinutes, sources, minIntervals = {} } = loadSettings().agent;
     // Her kaynağın kendi en kısa tarama aralığı olabilir

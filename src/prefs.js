@@ -2,7 +2,7 @@
 import { openStore, ConflictError } from './store.js';
 import { sleep } from './util.js';
 
-const DURATIONS = { '1 gün': 1, '3 gün': 3, '1 hafta': 7, 'süresiz': null };
+export const DURATIONS = { '1 gün': 1, '3 gün': 3, '1 hafta': 7, 'süresiz': null };
 
 /** action: 'durdur' | 'devam'; duration: DURATIONS anahtarı veya gün sayısı */
 export async function setMailPause(action, duration = 'süresiz', by = 'site') {

@@ -12,18 +12,22 @@ her ilana puan ve tavsiye verir. Yeni ilan, fiyat değişimi ve kalkan ilanları
 | **Chrome eklentisi** (kendi Chrome'unda tek sabitlenmiş sekme) | Chrome açıkken | sahibinden, arabam.com (km + hasar detayı), Borusan Next |
 | **Android tablet** (Termux + Firefox Nightly) | Tablet açıkken (7/24) | Yukarıdakilerin hepsi |
 | **Web arayüzü** (GitHub Pages) | Her zaman | <https://enesdedeoglu.github.io/aractakip/> (yerelde: <http://127.0.0.1:5173>) |
-| **Bulut taraması** (GitHub Actions) | **Kapalı** | Açmak için aşağıya bakın |
+| **GitHub Actions** | **Kapalı** (depo ayarlarında devre dışı) | Hiçbir iş onda çalışmıyor |
 
 Eklenti, ajandan sıradaki adresi alır ve kendi sabitlenmiş sekmesinde açar (arabam 3 dk, sahibinden ve Borusan 5 dk;
 saatte bir arabam, 6 saatte bir sahibinden tam tarama). Sayfalar arasında en az ~25 sn beklenir.
 Ayrı bir otomasyon penceresi açılmaz; sitelere senin normal tarayıcın gibi görünür.
 
-Ajan veriyi GitHub'daki `data/db.json` dosyasına yazar; her yazımda GitHub Actions siteyi (Pages) yeniden yayınlar.
-Mail bildirimleri, değişikliği bulan ajan tarafından bilgisayardan gönderilir.
+Ajan veriyi GitHub'daki `data/db.enc.json` dosyasına (şifreli) yazar. Siteyi de ajan yayınlar (`src/publish.js`):
+`web/`, şifreli veri ve Firefox eklentisi `gh-pages` dalına yazılır, GitHub Pages bu daldan sunar
+(Pages ayarı: *Deploy from a branch* → `gh-pages` / root). Daldan yayında saatte ~10 yayın sınırı olduğu için
+site en sık 6 dakikada bir güncellenir.
+Mail bildirimleri, değişikliği bulan ajan tarafından gönderilir. Siteden mail durdur/devam: düğme başlığı hazır bir
+GitHub issue'su açar (`mail durdur 1 gün` / `mail devam`); ajan 2 dakika içinde uygulayıp issue'yu kapatır.
 
 ### Bulut taramasını tekrar açmak
-Bilgisayar kapalıyken de arabam.com taransın istenirse `.github/workflows/scrape.yml` içindeki
-`schedule` ve `cron` satırlarının başındaki `#` işaretlerini kaldırıp gönderin. Elle tek seferlik tarama:
+Önce depo ayarlarında Actions'ı açın (Settings → Actions → General). Sonra `.github/workflows/scrape.yml`
+içindeki `schedule` ve `cron` satırlarının başındaki `#` işaretlerini kaldırıp gönderin. Elle tek seferlik tarama:
 ```bash
 gh workflow run scrape.yml --repo enesdedeoglu/aractakip -f mode=full
 ```
