@@ -15,6 +15,9 @@ function jaccard(a, b) {
   return inter / (a.size + b.size - inter);
 }
 
+// Versiyonu belirsiz ya da yalnızca yıldan tahmin edilmiş ilan her versiyonla uyumlu sayılır
+const sameTrim = (a, b) => a.c.trim === b.c.trim || [a, b].some((l) => l.c.trim === 'Belirsiz' || l.c.trimGuessed);
+
 /** İki ilanın aynı araç olma puanı; null = kesinlikle farklı */
 export function matchScore(a, b, ta = tokens(a.title), tb = tokens(b.title)) {
   if (a.source === b.source) return null;
@@ -23,7 +26,7 @@ export function matchScore(a, b, ta = tokens(a.title), tb = tokens(b.title)) {
   if (a.km == null || b.km == null || !a.price || !b.price) return null;
   if (a.city && b.city && lc(a.city) !== lc(b.city)) return null;
   if (a.color && b.color && lc(a.color) !== lc(b.color)) return null;
-  if (a.c.trim !== b.c.trim && a.c.trim !== 'Belirsiz' && b.c.trim !== 'Belirsiz') return null;
+  if (!sameTrim(a, b)) return null;
 
   const dkm = Math.abs(a.km - b.km);
   if (dkm > Math.max(500, 0.01 * Math.max(a.km, b.km))) return null;
@@ -96,16 +99,33 @@ export function findDuplicates(listings) {
   return groups.size;
 }
 
-/** Grup içindeki bilinen hasar/ekspertiz bilgisini birleştirir (analiz için; asıl kayıt değişmez) */
+/**
+ * Grup içindeki bilinen hasar/ekspertiz bilgisini birleştirir (analiz için; asıl kayıt değişmez).
+ * Temkinli birleştirme: bir site ağır hasar / boya / değişen bildiriyorsa, diğer sitedeki "yok" bilgisi onu ezmez;
+ * tramer için en yüksek tutar alınır.
+ */
 export function groupDamage(l, byKey) {
   if (!l.dup) return l.damage;
+  const all = [l.damage, ...l.dup.members.filter((k) => k !== l.key).map((k) => byKey[k]?.damage)].filter(Boolean);
   const out = { ...(l.damage || {}) };
-  for (const k of l.dup.members) {
-    const d = byKey[k]?.damage;
-    if (!d) continue;
-    for (const [f, v] of Object.entries(d)) if (out[f] == null && v != null) out[f] = v;
+  for (const d of all) for (const [f, v] of Object.entries(d)) if (out[f] == null && v != null) out[f] = v;
+  if (all.some((d) => d.heavy === true)) out.heavy = true;
+  const tramers = all.map((d) => d.tramer).filter((v) => v > 0);
+  if (tramers.length) { out.tramer = Math.max(...tramers); out.tramerRecord = true; }
+  for (const f of ['painted', 'changed']) if (all.some((d) => d[f] === true)) out[f] = true;
+  if (out.painted || out.changed || all.some((d) => d.original === false)) {
+    out.original = false;
+    const worse = all.find((d) => d.original === false && d.summary) || all.find((d) => (d.painted || d.changed) && d.summary);
+    if (worse) out.summary = worse.summary;
   }
   return out;
+}
+
+/** Analiz için grup görünümü: birleşik hasar bilgisi + tüm ilan metinlerindeki hasar uyarıları */
+export function groupView(l, byKey) {
+  const others = (l.dup?.members || []).filter((k) => k !== l.key).map((k) => byKey[k]).filter(Boolean);
+  const warnings = [...new Set([...(l.c?.warnings || []), ...others.flatMap((o) => o.c?.warnings || [])])];
+  return { ...l, damage: groupDamage(l, byKey), c: { ...l.c, warnings } };
 }
 
 /**
@@ -129,7 +149,7 @@ export function findRelists(listings) {
       if (a.c.model !== r.c.model || a.c.generation !== r.c.generation || a.year !== r.year) continue;
       if (a.city && r.city && lc(a.city).split(/\s/)[0] !== lc(r.city).split(/\s/)[0]) continue;
       if (a.color && r.color && lc(a.color) !== lc(r.color)) continue;
-      if (a.c.trim !== r.c.trim && a.c.trim !== 'Belirsiz' && r.c.trim !== 'Belirsiz') continue;
+      if (!sameTrim(a, r)) continue;
       const dkm = a.km - r.km;
       if (dkm < -500 || dkm > Math.max(3000, 0.05 * r.km)) continue;
       const dp = Math.abs(a.price - r.price) / r.price;

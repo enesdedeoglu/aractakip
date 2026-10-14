@@ -80,6 +80,10 @@ export function parseDetail(h, listing = {}) {
   const dmgStatus = dmg ? Number(dmg[1]) : null;
   const dmgPrice = dmg ? Math.round(Number(dmg[2])) : null;
   const boya = props['Boya-değişen'] || null;
+  // "Ağır Hasarlı" / "Ağır Hasar Kayıtlı": Evet / Hayır
+  const heavyKey = Object.keys(props).find((k) => /a[gğ][ıi]r\s*hasar/i.test(k));
+  const heavyVal = heavyKey ? props[heavyKey].trim() : '';
+  const heavy = /^(evet|var|kay[ıi]tl[ıi])/i.test(heavyVal) ? true : /^(hay[ıi]r|yok)/i.test(heavyVal) ? false : null;
   return {
     km: parseNumber(props['Kilometre']) ?? listing.km ?? null,
     year: Number(props['Yıl']) || listing.year || null,
@@ -88,7 +92,7 @@ export function parseDetail(h, listing = {}) {
     damage: {
       tramer: dmgPrice > 0 ? dmgPrice : dmgStatus === 2 ? 0 : null,
       tramerStatus: dmgStatus,
-      heavy: props['Ağır Hasarlı'] ? props['Ağır Hasarlı'] === 'Evet' : null,
+      heavy,
       summary: boya,
       original: boya ? /tamamı orjinal/i.test(boya) : null,
     },

@@ -1,9 +1,12 @@
 // Tesla ilanlarını model / nesil / versiyon / etiketlere göre kategorize eder.
 
 const lc = (s) => (s || '').toLocaleLowerCase('tr-TR');
+const ASCII = { ç: 'c', ğ: 'g', ı: 'i', ö: 'o', ş: 's', ü: 'u', â: 'a', î: 'i', û: 'u' };
+// Eşleştirme için Türkçe karakterler sadeleştirilir: "AGIR HASARLI", "Ağır Hasarlı" ve "agir hasarli" aynı yakalanır
+export const fold = (s) => lc(s).replace(/[çğıöşüâîû]/g, (c) => ASCII[c]).replace(/̇/g, '');
 
 export function detectModel(text) {
-  const t = lc(text);
+  const t = fold(text);
   if (/cyber\s*truck/.test(t)) return 'Cybertruck';
   if (/roadster/.test(t)) return 'Roadster';
   const m = t.match(/model\s*-?\s*([3ysx])\b/);
@@ -14,7 +17,7 @@ export function detectModel(text) {
 }
 
 export function detectGeneration(model, text, year) {
-  const t = lc(text);
+  const t = fold(text);
   if (model === 'Model Y') {
     if (/juniper/.test(t)) return 'Juniper';
     if (/legacy/.test(t)) return 'Legacy';
@@ -28,65 +31,131 @@ export function detectGeneration(model, text, year) {
   return '-';
 }
 
-export function detectTrim(model, text) {
-  const t = lc(text);
-  if (/plaid/.test(t)) return 'Plaid';
-  if (/performance|perfo?rmans|\bp\d{2,3}d\b|\bperf\b/.test(t)) return 'Performance';
-  const awd = /\bawd\b|dual\s*motor|çift\s*motor|4wd|4x4|\b\d{2,3}d\b/.test(t);
-  if (/long\s*range|uzun\s*menzil|\blr\b|premium|maximum\s*range/.test(t)) return awd ? 'Long Range AWD' : 'Long Range';
-  if (/standart|standard|\bsr\+?\b|\brwd\b|arkadan\s*itiş|base/.test(t)) return 'Standart RWD';
-  if (awd) return 'Long Range AWD';
-  if ((model === 'Model S' || model === 'Model X') && /\b(75|85|90|100)\b/.test(t)) return 'Long Range';
-  return 'Belirsiz';
+const RE = {
+  perf: /performance|perfo?rmans|\bp\d{2,3}d\b|\bperf\b/,
+  lr: /long\s*range|uzun\s*menzil|\blr\b|maximum\s*range|launch\s*series/,
+  awd: /\bawd\b|dual\s*motor|cift\s*motor|4wd|4x4|dort\s*ceker|4\s*ceker|\b\d{2,3}d\b/,
+  rwd: /\brwd\b|arkadan\s*(itis|itme|cekis)|tek\s*motor|single\s*motor/,
+  premium: /premium/,
+  std: /standart|standard|\bsr\+?\b|\bbase\b/,
+  // "Standart menzil / SR": 2025'te satılan Juniper arkadan itiş (bugünkü adıyla Premium) için de kullanılıyor
+  stdRange: /standart\s*menzil|standard\s*range|\bsr\+?\b/,
+};
+
+/**
+ * Versiyon tespiti. Juniper Model Y'de Türkiye'deki satış adları ayrı versiyon sayılır:
+ *  - Standart: Kasım 2025'te gelen sade donanımlı arkadan itiş (arka ekran, cam tavan, 15 hoparlör yok)
+ *  - Premium : 2025'te satılan tam donanımlı arkadan itiş (eski adı "Standart menzil / SR")
+ *  - Long Range RWD / AWD (Premium Long Range), Performance
+ * @returns {{ trim: string, guessed: boolean }}  guessed = yalnızca "RWD" yazıyor, versiyon yıla göre tahmin edildi
+ */
+function trimOf(model, text, { generation, year, specs, guess = true } = {}) {
+  const t = fold(text);
+  const out = (trim, guessed = false) => ({ trim, guessed });
+  if (/plaid/.test(t)) return out('Plaid');
+  if (RE.perf.test(t)) return out('Performance');
+  const awd = RE.awd.test(t);
+  const rwd = !awd && RE.rwd.test(t);
+  const lr = RE.lr.test(t) || specs?.batteryKwh >= 70 || specs?.rangeKm >= 560;
+
+  if (model === 'Model Y') {
+    if (lr || awd) return out(rwd ? 'Long Range RWD' : 'Long Range AWD');
+    if (generation === 'Juniper') {
+      if (RE.premium.test(t)) return out('Premium');
+      if (RE.std.test(t) && !RE.stdRange.test(t)) return out('Standart');
+      if (rwd || RE.stdRange.test(t)) {
+        if (!guess) return out('Belirsiz');
+        // Standart Kasım 2025'te geldi, aynı anda eski arkadan itiş (Premium) satıştan kalktı
+        return out(year >= 2026 ? 'Standart' : 'Premium', true);
+      }
+      return out('Belirsiz');
+    }
+    if (RE.std.test(t) || rwd) return out('Standart RWD');
+    return out('Belirsiz');
+  }
+  if (lr) return out(awd ? 'Long Range AWD' : rwd ? 'Long Range RWD' : 'Long Range');
+  if (RE.std.test(t) || rwd || (model === 'Model 3' && RE.premium.test(t))) return out('Standart RWD');
+  if (awd) return out('Long Range AWD');
+  if ((model === 'Model S' || model === 'Model X') && /\b(75|85|90|100)\b/.test(t)) return out('Long Range');
+  return out('Belirsiz');
+}
+
+export function detectTrim(model, text, ctx = {}) {
+  return trimOf(model, text, ctx).trim;
 }
 
 const TAG_RULES = [
   ['FSD', /\bfsd\b|full\s*self|tam\s*otonom/],
-  ['EAP', /\beap\b|enhanced\s*auto|gelişmiş\s*otopilot/],
+  ['EAP', /\beap\b|enhanced\s*auto|gelismis\s*otopilot/],
   ['HW4', /\bhw\s*4\b|hardware\s*4/],
-  ['PPF', /\bppf\b|şeffaf\s*kaplama/],
-  ['Garantili', /garanti/],
-  ['Hatasız', /hatasız|hatasiz/],
-  ['Boyasız', /boyasız|boyasiz/],
-  ['Değişensiz', /değişensiz|degisensiz/],
-  ['Tramersiz', /tramersiz|tramer\s*yok|hasar\s*kaydı\s*yok/],
-  ['Takas', /takas/],
+  ['PPF', /\bppf\b|seffaf\s*kaplama/],
+  ['Garantili', /garanti(?!si?z|(si)?\s*(yok|bitti|bitmis|dolmus|dolmustur))/],
+  ['Hatasız', /hatasiz/],
+  ['Boyasız', /boyasiz/],
+  ['Değişensiz', /degisensiz/],
+  // "ağır hasar kaydı yok" tramer kaydı olmadığı anlamına gelmez
+  ['Tramersiz', /tramersiz|tramer\s*(kaydi\s*)?yok|(?<!agir\s?)hasar\s*kaydi\s*yok/],
+  ['Takas', /takas(?!\s*(yok|olmaz|dusunulmez|kabul\s*edilmez))/],
   ['Krediye uygun', /kredi/],
   ['Acil', /\bacil\b/],
-  ['Beyaz iç', /beyaz\s*(iç|koltuk|döşeme)/],
-  ['Çekme demiri', /çeki\s*demir|çekme\s*demir/],
+  ['Beyaz iç', /beyaz\s*(ic|koltuk|doseme)/],
+  ['Çekme demiri', /ceki\s*demir|cekme\s*demir/],
 ];
 
 const DAMAGE_RULES = [
-  ['Ağır hasar kayıtlı', /ağır\s*hasar|(^|[^\p{L}])pert([^\p{L}]|$)/gu],
-  ['Hasarlı', /(^|[^\p{L}])(hasarlı|kazalı)([^\p{L}]|$)/gu],
-  ['Değişen var', /değişen\s*var|\d+\s*parça\s*değişen/gu],
+  // "ağır hasarsız" / "pertsiz" olumsuzdur; "çekme belgeli" = pert kaydından sonra yeniden tescil
+  ['Ağır hasar kayıtlı', /agir\s*hasar(?!siz)|(^|[^\p{L}])pert(?!\p{L})|cekme\s*belge|hurda\s*belge/gu],
+  ['Hasarlı', /(^|[^\p{L}])(hasarli|kazali)(?!\p{L})/gu],
+  ['Değişen var', /degisen(i|ler)?\s*var|(^|[^\d])[1-9]\d?\s*parca\s*degisen|degisenli/gu],
 ];
 
-// "ağır hasar kaydı yok", "hasarlı değil" gibi olumsuz ifadeleri ayıkla
-const NEGATION = /^.{0,18}?(yok|yoktur|değil|kayıtsız|bulunmamakta|hayır)/u;
+// Olumsuzluk, hasar ifadesinin hemen ardından gelmeli ("ağır hasar kaydı yok", "pert değildir",
+// "ağır hasar: hayır", "ağır hasar ve tramer kaydı yoktur"). Arada yalnızca "kaydı / kayıtlı / bilgisi"
+// gibi dolgu sözcükleri olabilir; "ağır hasar kayıtlı, değişen yok" ya da "hasarlı tramer yok" olumludur.
+const FILLER = new Set(['i', 'li', 'si', 'kaydi', 'kayit', 'kayitli', 'kaydida', 'kayitlari', 'bilgisi', 'durumu', 'sorgusu', 'gecmisi',
+  'mevcut', 'hicbir', 'kesinlikle', 'asla', 'olarak', 've', 'veya', 'ya', 'da', 'de']);
+const AFTER_CONJ = new Set(['tramer', 'boya', 'degisen', 'kaza', 'hasar']); // yalnızca "ve / veya"dan sonra dolgu sayılır
+const NEG = /^(yok|degil|bulunma|bulunmu|olmayan|olmad|olmam|hayir|kayitsiz|temiz)/;
+
+function negatedAfter(rest) {
+  const toks = rest.slice(0, 80).split(/[^\p{L}\p{N}]+/u).filter(Boolean);
+  let prev = null;
+  for (let i = 0; i < toks.length && i < 5; i++) {
+    const w = toks[i];
+    if (NEG.test(w)) return true;
+    const filler = FILLER.has(w) || (AFTER_CONJ.has(w) && ['ve', 'veya', 'da'].includes(prev));
+    if (!filler) return false;
+    prev = w;
+  }
+  return false;
+}
+
 function matchesPositive(t, re) {
   re.lastIndex = 0;
   for (const m of t.matchAll(re)) {
-    if (!NEGATION.test(t.slice(m.index + m[0].length))) return true;
+    if (!negatedAfter(t.slice(m.index + m[0].length))) return true;
   }
   return false;
 }
 
 export function detectTags(text) {
-  const t = lc(text);
+  const t = fold(text);
   const tags = TAG_RULES.filter(([, re]) => re.test(t)).map(([n]) => n);
   const warnings = DAMAGE_RULES.filter(([, re]) => matchesPositive(t, re)).map(([n]) => n);
   return { tags, warnings };
 }
 
 export function classify(l) {
-  const text = `${l.modelRaw || ''} ${l.title || ''} ${l.specs?.trim || ''} ${l.specs?.drive || ''}`;
+  const sp = l.specs || {};
+  // Sitenin kendi kategori/özellik alanları önce; başlık yalnızca bunlar yetmezse devreye girer
+  const structured = `${l.modelRaw || ''} ${sp.series || ''} ${sp.trim || ''} ${sp.drive || ''}`;
+  const text = `${structured} ${l.title || ''}`;
   const model = detectModel(`${l.modelRaw || ''} ${l.title || ''}`);
   const generation = detectGeneration(model, text, l.year);
-  let trim = detectTrim(model, `${l.modelRaw || ''} ${l.specs?.trim || ''} ${l.specs?.drive || ''}`);
-  if (trim === 'Belirsiz') trim = detectTrim(model, text);
-  const { tags, warnings } = detectTags(`${l.title || ''}`);
+  const ctx = { generation, year: l.year, specs: sp };
+  let { trim, guessed } = trimOf(model, structured, { ...ctx, guess: false });
+  if (trim === 'Belirsiz') ({ trim, guessed } = trimOf(model, text, ctx));
+  const { tags, warnings } = detectTags(`${l.title || ''} ${l.description || ''}`);
   if (l.damage?.original) {
     for (const t of ['Boyasız', 'Değişensiz']) if (!tags.includes(t)) tags.push(t);
   }
@@ -98,6 +167,7 @@ export function classify(l) {
     model,
     generation,
     trim,
+    trimGuessed: guessed || undefined,
     segment: `${model} · ${generation} · ${trim}`,
     kmBand,
     tags,

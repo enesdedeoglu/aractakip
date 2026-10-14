@@ -142,6 +142,9 @@
       state.seenKeys = keys;
       state.db = db;
       state.listings = Object.values(db.listings || {});
+      // Versiyon adları değişebilir (ör. eski "Long Range" → "Premium"); veride olmayan seçili versiyonları bırak
+      const trims = new Set(state.listings.map((l) => l.c?.trim));
+      state.f.trims = state.f.trims.filter((t) => trims.has(t));
       $('#live').classList.remove('off');
       render();
       if (!first && fresh.length) announce(fresh);
@@ -208,9 +211,13 @@
     return collapse(rawFiltered(ignore));
   }
 
+  // Aramada Türkçe karakterler sadeleştirilir: "agir hasar" ile "AĞIR HASAR" / "AGIR HASAR" aynı bulunur
+  const ASCII = { ç: 'c', ğ: 'g', ı: 'i', ö: 'o', ş: 's', ü: 'u' };
+  const fold = (s) => String(s || '').toLocaleLowerCase('tr-TR').replace(/[çğıöşü]/g, (c) => ASCII[c]).replace(/\u0307/g, '');
+
   function rawFiltered(ignore = '') {
     const f = state.f;
-    const q = f.q.trim().toLocaleLowerCase('tr-TR');
+    const q = fold(f.q.trim());
     return state.listings.filter((l) => {
       if (!f.showRemoved && l.status !== 'active') return false;
       if (ignore !== 'model' && f.model && l.c.model !== f.model) return false;
@@ -230,7 +237,7 @@
       if (f.hideReserved && l.reserved) return false;
       if (f.onlyFav && !state.favs.has(l.key)) return false;
       if (q) {
-        const hay = `${l.title} ${l.modelRaw} ${l.city} ${l.district} ${l.sellerName} ${l.c.segment} ${(l.c.tags || []).join(' ')}`.toLocaleLowerCase('tr-TR');
+        const hay = fold(`${l.title} ${l.modelRaw} ${l.city} ${l.district} ${l.sellerName} ${l.c.segment} ${(l.c.tags || []).join(' ')} ${(l.c.warnings || []).join(' ')}`);
         if (!q.split(/\s+/).every((w) => hay.includes(w))) return false;
       }
       return true;
@@ -390,7 +397,7 @@
         <a class="title" href="${esc(l.url)}" target="_blank" rel="noopener">${esc(l.c.model)} ${l.c.generation !== '-' ? esc(l.c.generation) : ''} · ${esc(l.c.trim)} · ${l.year || '?'}</a>
         <div class="subtitle" title="${esc(l.title)}">${esc(l.title)}</div>
         <div class="price-row"><span class="price">${tl(l.price)}</span>${devTxt}</div>
-        ${a.expected && a.label !== 'Veri az' ? `<div class="expected">Beklenen ≈ ${tl(a.expected)}${a.compMedian ? ` · benzer ${a.comps} ilan medyanı ${tlShort(a.compMedian)}` : ''}</div>` : ''}
+        ${a.expected && a.label !== 'Veri az' ? `<div class="expected">Beklenen ≈ ${tl(a.expected)}${a.expectedClean ? ` (hasarsız ≈ ${tlShort(a.expectedClean)})` : ''}${a.compMedian ? ` · benzer ${a.comps} ilan medyanı ${tlShort(a.compMedian)}` : ''}</div>` : ''}
         <div class="meta">${meta}</div>
         ${otherHtml}
         <div class="advice">${esc(a.advice || '')}</div>
@@ -463,14 +470,14 @@
   function renderArchive() {
     const days = +$('#archDays').value || 90;
     const model = $('#archModel').value;
-    const q = $('#archQ').value.trim().toLocaleLowerCase('tr-TR');
+    const q = fold($('#archQ').value.trim());
     const removedAll = state.listings.filter((l) => l.status === 'removed' && Date.now() - Date.parse(l.removedAt) < days * DAY);
     const models = MODEL_ORDER.filter((m) => removedAll.some((l) => l.c.model === m));
     const sel = $('#archModel');
     const cur = sel.value;
     sel.innerHTML = '<option value="">Tüm modeller</option>' + models.map((m) => `<option ${m === cur ? 'selected' : ''}>${m}</option>`).join('');
     const rows = removedAll.filter((l) => (!model || l.c.model === model) &&
-      (!q || `${l.title} ${l.city} ${l.c.segment}`.toLocaleLowerCase('tr-TR').includes(q)))
+      (!q || fold(`${l.title} ${l.city} ${l.c.segment}`).includes(q)))
       .sort((a, b) => Date.parse(b.removedAt) - Date.parse(a.removedAt));
 
     // Model/versiyon bazında özet: kaç ilan kalktı, ortalama kaç günde, son fiyatlar

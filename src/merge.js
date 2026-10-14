@@ -1,7 +1,7 @@
 // Tarama sonuçlarını veritabanına işler; yeni / fiyat değişimi / kalkan ilanları tespit eder.
 import { classify } from './classify.js';
 import { buildMarket, analyzeListing, marketSummary } from './analyze.js';
-import { findDuplicates, groupDamage, findRelists } from './dedupe.js';
+import { findDuplicates, groupView, findRelists } from './dedupe.js';
 
 const HOUR = 3600000;
 const KEEP_REMOVED_DAYS = 365; // arşiv: kaldırılan ilanlar 1 yıl saklanır
@@ -100,13 +100,17 @@ export function mergeScans(db, scans, now = new Date()) {
         }
       }
     }
-    // sahibinden "Ağır Hasar Kayıtlı: Evet" filtreli liste: tam geldiyse diğer ilanlar "kaydı yok"
+    // sahibinden "Ağır Hasar Kayıtlı: Evet" filtreli liste: tam geldiyse diğer ilanlar "kaydı yok".
+    // Boş liste "hiç ağır hasarlı yok" sayılmaz (sayfa eksik/boş yüklenmiş olabilir) – yoksa tüm ilanlar
+    // yanlışlıkla "ağır hasar kaydı yok" görünür.
     if (s.mode === 'heavy') {
       st.lastHeavy = t;
-      if (s.heavyComplete) {
-        const ids = new Set(s.heavyIds);
-        for (const l of Object.values(db.listings)) {
-          if (l.source !== s.source || l.status !== 'active') continue;
+      const ids = new Set(s.heavyIds || []);
+      const active = Object.values(db.listings).filter((l) => l.source === s.source && l.status === 'active');
+      // Filtre çalışmadıysa (liste aktif ilanların yarısından fazlası) hiçbirine dokunma
+      const plausible = ids.size > 0 && ids.size <= Math.max(5, active.length * 0.5);
+      if (s.heavyComplete && plausible) {
+        for (const l of active) {
           const want = ids.has(l.sourceId);
           if (l.damage?.heavy !== want) { l.damage = { ...(l.damage || {}), heavy: want }; changes.updated++; }
         }
@@ -148,14 +152,17 @@ export function recompute(db) {
   // Farklı sitelerdeki aynı aracı eşleştir; piyasa modeli ve karşılaştırmalar her aracı bir kez saysın
   db.dupGroups = findDuplicates(all);
   db.relists = findRelists(all);
+  // Gruptaki diğer ilanlardan gelen hasar/ekspertiz bilgisi de değerlendirmeye katılsın. Ağır hasar durumu
+  // fiyat modelinden önce belirlenir (model ağır hasarlı araçları ayrı fiyatlar)
+  const views = new Map();
+  for (const l of all) {
+    const view = l.dup ? groupView(l, db.listings) : l;
+    l.c.heavy = view.c.heavy = heavyStatus(view);
+    views.set(l.key, view);
+  }
   const unique = all.filter((l) => !l.dup || l.dup.primary);
   const market = buildMarket(unique);
-  for (const l of all) {
-    // Gruptaki diğer ilanlardan gelen hasar/ekspertiz bilgisi de değerlendirmeye katılsın
-    const view = l.dup ? { ...l, damage: groupDamage(l, db.listings) } : l;
-    l.a = analyzeListing(view, market, unique);
-    l.c.heavy = heavyStatus(view);
-  }
+  for (const l of all) l.a = analyzeListing(views.get(l.key), market, unique);
   db.market = marketSummary(unique);
   db.model = market ? { n: market.n, at: new Date().toISOString() } : null;
 }

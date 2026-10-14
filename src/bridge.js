@@ -173,8 +173,14 @@ export function createBridge({ onScan, needDetail, onChallenge, shared = () => (
         if (task === 'sahibindenHeavy') {
           // Ağır hasar kayıtlı ilan listesi: buradakiler "kayıtlı", tek sayfaya sığdıysa diğerleri "kaydı yok"
           done();
+          // Site filtreyi düşürüp (ör. doğrulama sonrası yönlendirme) normal listeyi gösterdiyse hiçbir ilan işaretlenmez
+          if (!/[?&]a116445=1263353(&|$)/.test(url)) {
+            log('sahibinden: ağır hasar filtresi sayfada yok, liste işaretlenmedi');
+            return onScan({ source: 'sahibinden', listings: normalizeSahibinden([pg]), complete: false, mode: 'quick' });
+          }
           const listings = normalizeSahibinden([pg]).map((l) => ({ ...l, damage: { ...l.damage, heavy: true } }));
-          const heavyComplete = rows.length < 50 && (!total || listings.length >= total * 0.9);
+          // Boş sayfa "hiç ağır hasarlı yok" sayılmaz; aksi halde tüm ilanlar "kaydı yok" görünür
+          const heavyComplete = listings.length > 0 && rows.length < 50 && (!total || listings.length >= total * 0.9);
           return onScan({ source: 'sahibinden', listings, complete: false, mode: 'heavy', heavyIds: listings.map((l) => l.sourceId), heavyComplete });
         }
         if (task === 'crawl' && crawl?.source === 'sahibinden') {

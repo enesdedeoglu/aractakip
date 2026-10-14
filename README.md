@@ -117,8 +117,20 @@ STORE=fs npm run scan   # GitHub yerine yerel dosyaya yaz (geliştirme)
 ```
 
 ## Puanlama
-- **Beklenen fiyat:** tüm aktif ilanlarda `log(fiyat) ~ model + nesil + versiyon + yıl + km` ridge regresyonu (aykırılar atılır).
+- **Versiyonlar:** Juniper Model Y'de Türkiye'deki satış adları ayrı versiyondur: **Standart** (Kasım 2025'te gelen sade
+  donanımlı arkadan itiş), **Premium** (2025'te satılan tam donanımlı arkadan itiş), **Long Range RWD / AWD**
+  (Premium Long Range) ve **Performance**. Legacy'de Standart RWD, Long Range AWD, Performance. Sitenin kategori alanı
+  ve detaydaki çekiş/batarya bilgisi önce, başlık sonra kullanılır; yalnızca "RWD" yazan Juniper'de versiyon yıla göre
+  tahmin edilir ve ilanda uyarı çıkar.
+- **Beklenen fiyat:** tüm aktif ilanlarda `log(fiyat) ~ model + nesil + versiyon + nesil×versiyon + yıl + km + ağır hasar`
+  hiyerarşik ridge regresyonu (aykırılar atılır). Az ilanlı versiyonlar üst seviyelere yaslanır; her ilanın tahmini o ilan
+  modelden çıkarılarak hesaplanır (kendi fiyatını "piyasa" göstermez). Ağır hasarlı araç ağır hasarlılarla kıyaslanır,
+  hasarsız eşdeğer fiyat ayrıca gösterilir.
+- **Ağır hasar:** arabam detayı (Ağır Hasarlı: Evet/Hayır), sahibinden "Ağır Hasar Kayıtlı" filtreli liste ve ilan metni
+  ("ağır hasar", "pert", "çekme belgeli"; Türkçe karaktersiz yazımlar dahil, "ağır hasar kaydı yok" gibi olumsuzlar hariç).
+  Aynı aracın bir sitesinde ağır hasar yazıyorsa diğer sitedeki "yok" bilgisi bunu ezmez.
 - **Puan (0–100):** fiyat sapması + tramer/boya/değişen/ağır hasar + satıcı tipi + km/yıl + fiyat düşüşleri + ilanda kalma süresi.
 - **Etiketler:** 🔥 Fırsat · 👍 İyi fiyat · ⚖️ Piyasa · 💸 Pahalı · ⚠️ Şüpheli (piyasanın %25+ altında, bireysel) · Veri az.
+  Ağır hasarlı araç "Fırsat" etiketi almaz.
 
 Tahminler istatistikseldir; almadan önce ekspertiz ve batarya SOH testi yaptırın.
