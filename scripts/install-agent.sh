@@ -28,7 +28,7 @@ cat > "$PLIST" <<PL
   <array><string>$NODE</string><string>$DIR/src/agent.js</string></array>
   <key>WorkingDirectory</key><string>$DIR</string>
   <key>EnvironmentVariables</key>
-  <dict><key>PATH</key><string>$PATH_VALUE</string></dict>
+  <dict><key>PATH</key><string>$PATH_VALUE</string><key>ARACTAKIP_AUTOUPDATE</key><string>pull</string></dict>
   <key>RunAtLoad</key><true/>
   <key>KeepAlive</key><true/>
   <key>ThrottleInterval</key><integer>60</integer>

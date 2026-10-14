@@ -73,6 +73,9 @@ scripts/install-agent.sh            # oturum açılışında otomatik başlar
 scripts/install-agent.sh --uninstall
 tail -f ~/.aractakip/agent.log
 ```
+Ajan kendini günceller: 30 dakikada bir GitHub'daki `main`'e bakar, yeni kod varsa çekip yeniden başlar
+(depo `main` dalında ve yerel değişiklik yoksa; kapatmak için `ARACTAKIP_AUTOUPDATE=0`). Chrome eklentisi
+dosyaları da çekilir ama Chrome onları tarayıcı yeniden açılınca ya da `chrome://extensions`'ta yenileyince yükler.
 
 ### 3) Chrome eklentisi
 `chrome://extensions` → sağ üstte **Geliştirici modu** → **Paketlenmemiş öğe yükle** → `extension` klasörü.

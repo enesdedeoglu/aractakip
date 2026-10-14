@@ -312,3 +312,61 @@ test('arabam detayı: ağır hasar alanı farklı yazımlarla okunur', () => {
   assert.equal(parseDetail(page('Ağır Hasarlı', 'Hayır')).damage.heavy, false);
   assert.equal(parseDetail(page('Renk', 'Beyaz')).damage.heavy, null);
 });
+
+import { autoUpdateMode, checkForUpdate } from '../src/update.js';
+import { execFileSync } from 'node:child_process';
+import os from 'node:os';
+import fs from 'node:fs';
+import path from 'node:path';
+
+test('otomatik güncelleme modu: tablet kapanır, launchd ile çalışan Mac kodu çeker', () => {
+  assert.equal(autoUpdateMode({ ARACTAKIP_AUTOUPDATE: '1' }, 'android', 500), 'exit');
+  assert.equal(autoUpdateMode({}, 'darwin', 1), 'pull');
+  assert.equal(autoUpdateMode({ XPC_SERVICE_NAME: 'com.aractakip.agent' }, 'darwin', 400), 'pull');
+  assert.equal(autoUpdateMode({ XPC_SERVICE_NAME: '0' }, 'darwin', 400), null, 'terminalden "npm run agent"');
+  assert.equal(autoUpdateMode({ ARACTAKIP_AUTOUPDATE: '0' }, 'darwin', 1), null);
+  assert.equal(autoUpdateMode({}, 'linux', 1), null);
+});
+
+test('Mac ajanı main\'deki yeni kodu kendisi çeker, yerel değişikliğe dokunmaz', async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'aractakip-'));
+  const git = (cwd, ...a) => execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@t', '-c', 'commit.gpgsign=false', ...a], { cwd, encoding: 'utf8' }).trim();
+  const write = (dir, f, txt) => { fs.mkdirSync(path.dirname(path.join(dir, f)), { recursive: true }); fs.writeFileSync(path.join(dir, f), txt); };
+  try {
+    git(tmp, 'init', '-q', '--bare', '-b', 'main', 'origin.git');
+    git(tmp, 'clone', '-q', 'origin.git', 'dev');
+    const dev = path.join(tmp, 'dev');
+    write(dev, 'src/a.js', '1');
+    write(dev, 'web/app.js', '1');
+    git(dev, 'add', '.');
+    git(dev, 'commit', '-q', '-m', 'ilk');
+    git(dev, 'push', '-q', 'origin', 'main');
+    git(tmp, 'clone', '-q', 'origin.git', 'mac');
+    const mac = path.join(tmp, 'mac');
+    const head = () => git(mac, 'rev-parse', 'HEAD');
+    const push = (f, txt) => { write(dev, f, txt); git(dev, 'commit', '-q', '-am', f); git(dev, 'push', '-q', 'origin', 'main'); return git(dev, 'rev-parse', 'HEAD'); };
+
+    let since = head();
+    assert.equal(await checkForUpdate({ dir: mac, mode: 'pull', since }), 'none');
+    // Yalnızca site dosyası değişti: çekilir, yeniden başlatma gerekmez
+    let tip = push('web/app.js', '2');
+    assert.equal(await checkForUpdate({ dir: mac, mode: 'pull', since }), 'files');
+    assert.equal(head(), tip);
+    // Kod değişti: çekilir, ajan yeniden başlamalı
+    tip = push('src/a.js', '2');
+    assert.equal(await checkForUpdate({ dir: mac, mode: 'pull', since }), 'restart');
+    assert.equal(head(), tip);
+    since = head();
+    assert.equal(await checkForUpdate({ dir: mac, mode: 'pull', since }), 'none', 'yeniden başladıktan sonra döngüye girmez');
+    // Tablet modu yalnızca haber verir; kodu termux-run.sh çeker
+    tip = push('src/a.js', '3');
+    assert.equal(await checkForUpdate({ dir: mac, mode: 'exit', since }), 'restart');
+    assert.notEqual(head(), tip);
+    // Elle yapılmış yerel değişiklik ezilmez
+    write(mac, 'src/a.js', 'yerel');
+    assert.ok((await checkForUpdate({ dir: mac, mode: 'pull', since })).skipped);
+    assert.equal(fs.readFileSync(path.join(mac, 'src/a.js'), 'utf8'), 'yerel');
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});

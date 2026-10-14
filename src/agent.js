@@ -18,6 +18,7 @@ import { openStore } from './store.js';
 import { setMailPause, DURATIONS } from './prefs.js';
 import { publishSite } from './publish.js';
 import { notifyDesktop } from './notify.js';
+import { autoUpdateMode, checkForUpdate } from './update.js';
 import { log, sleep, recentLog } from './util.js';
 
 const LOCK = path.join(os.homedir(), '.aractakip', 'agent.lock');
@@ -172,20 +173,31 @@ function startUi() {
   server.listen(UI_PORT, '127.0.0.1', () => log(`Arayüz: http://127.0.0.1:${UI_PORT}`));
 }
 
-// Otomatik güncelleme (tablette): GitHub'da yeni kod varsa kapan; termux-run.sh kodu çekip yeniden başlatır
+// Otomatik güncelleme: GitHub'da yeni kod varsa güncellenip yeniden başlar (ayrıntı: update.js).
+// Tablette termux-run.sh, Mac'te launchd ajanı yeniden başlatır; Mac'te kodu ajan kendisi çeker.
 function startAutoUpdate() {
-  if (process.env.ARACTAKIP_AUTOUPDATE !== '1') return;
+  const mode = autoUpdateMode();
+  if (!mode) return;
   const dir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-  setInterval(() => {
-    execFile('git', ['-C', dir, 'fetch', '-q', 'origin', 'main'], (err) => {
-      if (err) return;
-      execFile('git', ['-C', dir, 'diff', '--quiet', 'HEAD', 'origin/main', '--', 'src', 'package.json', 'config'], (changed) => {
-        if (!changed) return;
+  let since;
+  try { since = execFileSync('git', ['-C', dir, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).trim(); } catch { return; }
+  let lastNote = '';
+  let restarting = false;
+  const note = (msg) => { if (msg !== lastNote) log(msg); lastNote = msg; };
+  const check = async () => {
+    if (restarting) return;
+    try {
+      const r = await checkForUpdate({ dir, mode, since });
+      if (r === 'files') log('Site/eklenti dosyaları GitHub\'dan güncellendi');
+      else if (r === 'restart') {
+        restarting = true;
         log('Yeni kod bulundu, güncellemek için yeniden başlatılıyor…');
         serial(async () => { await closeContext(); try { fs.unlinkSync(LOCK); } catch {} process.exit(0); });
-      });
-    });
-  }, 30 * 60000);
+      } else if (r.skipped) note(`Otomatik güncelleme atlandı: ${r.skipped}`);
+    } catch (e) { note(`Güncelleme kontrolü yapılamadı: ${e.message.split('\n')[0]}`); }
+  };
+  if (mode === 'pull') setTimeout(check, 2 * 60000); // Mac açılışta da baksın; tablet açılışta zaten çekiyor
+  setInterval(check, 30 * 60000);
 }
 
 // Site yayını (GitHub Actions yerine): 2 dakikada bir dene; gh-pages en sık 6 dakikada bir güncellenir
