@@ -17,7 +17,7 @@ import { createBridge } from './bridge.js';
 import { openStore } from './store.js';
 import { setMailPause, DURATIONS } from './prefs.js';
 import { publishSite } from './publish.js';
-import { notifyDesktop } from './notify.js';
+import { notifyDesktop, sendNotice } from './notify.js';
 import { autoUpdateMode, checkForUpdate } from './update.js';
 import { log, sleep, recentLog } from './util.js';
 
@@ -50,6 +50,7 @@ const serial = (fn) => (chain = chain.then(fn, fn).catch((e) => log('Döngü hat
 
 let latestDb = null;
 let lastChallengeNotice = 0;
+const lastLoginMail = {};
 
 const bridge = createBridge({
   intervals: loadSettings().agent.extension,
@@ -62,6 +63,20 @@ const bridge = createBridge({
     const host = new URL(url).host.replace('www.', '');
     if (info.blocked) {
       notifyDesktop(`${host} erişimi engelledi`, `Siteye ${info.hours} saat boyunca hiç girilmeyecek; sonra otomatik devam edilir.`);
+      return;
+    }
+    if (info.login) {
+      log(`⏸ ${host}: oturum kapanmış, giriş sayfası açıldı – bu cihazda 1 saat beklenecek`);
+      const device = RUNNER === 'tablet' ? 'tablette (Firefox)' : "Mac'te (Chrome)";
+      notifyDesktop(`${host} girişi gerekiyor`, `${device} takip sekmesinde ${host} hesabına giriş yap.`);
+      if (Date.now() - (lastLoginMail[host] || 0) > 12 * 3600e3) {
+        lastLoginMail[host] = Date.now();
+        sendNotice(`${host} girişi gerekiyor (${RUNNER})`,
+          `${device} ${host} oturumu kapanmış; takip sekmesi giriş sayfasında bekliyor.\n\n` +
+          `Giriş yapınca (\"Oturum açık kalsın\" işaretli) tarama kendiliğinden devam eder. Sekme 30 dakika giriş sayfasında tutulur; ` +
+          `bu sürede giriş yapılmazsa diğer siteler taranmaya devam eder ve ${host} saatte bir yeniden denenir.`)
+          .catch((e) => log('Uyarı maili gönderilemedi:', e.message));
+      }
       return;
     }
     log(`doğrulama ekranı: ${host} (tarayıcıdaki takip sekmesinde)`);

@@ -77,9 +77,30 @@ async function open(url) {
   await set({ tabId: tab.id, tabSince: Date.now() });
 }
 
+// Site oturumu kapanıp giriş sayfasına yönlendirdiyse sekmeyi en fazla 30 dk orada bırak (kullanıcı giriş
+// yapabilsin); ajana bildir, o da bu cihazda siteyi bir süre denemez. Giriş sonrası site ilan listesine döner.
+const LOGIN_PAGES = [/^https:\/\/secure\.sahibinden\.com\/giris/];
+const LOGIN_HOLD_MS = 30 * 60000;
+
+async function onLoginPage(st) {
+  const tab = await ourTab();
+  if (!tab || !LOGIN_PAGES.some((re) => re.test(tab.url || ''))) {
+    if (st.loginSince) await set({ loginSince: 0 });
+    return false;
+  }
+  const since = st.loginSince || Date.now();
+  if (!st.loginSince) {
+    await set({ loginSince: since });
+    await badge('!', '#e82127');
+    fetch(`${AGENT}/page`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ url: tab.url, challenge: true, login: true }) }).catch(() => {});
+  }
+  return Date.now() - since < LOGIN_HOLD_MS;
+}
+
 async function tick() {
   const st = await get();
   if (!st.enabled) { await badge('off', '#888'); return; }
+  if (await onLoginPage(st)) return;
   let url;
   try {
     ({ url } = await (await fetch(`${AGENT}/next`)).json());

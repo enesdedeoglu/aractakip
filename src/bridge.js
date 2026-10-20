@@ -147,7 +147,7 @@ export function createBridge({ onScan, needDetail, onChallenge, shared = () => (
     return pick.url;
   }
 
-  async function page({ url, kind, html, arows, nextData, heads, rows, total, challenge, blocked }) {
+  async function page({ url, kind, html, arows, nextData, heads, rows, total, challenge, blocked, login }) {
     lastSeen = Date.now();
     const task = inflight?.task;
     const hostSrc = /sahibinden/.test(url) ? 'sahibinden' : /arabam/.test(url) ? 'arabam' : /borusan/.test(url) ? 'borusan' : null;
@@ -158,6 +158,14 @@ export function createBridge({ onScan, needDetail, onChallenge, shared = () => (
       return block(hostSrc, 'site otomatik erişim engeli gösterdi');
     }
     const done = () => { if (task && task !== 'crawl') last[task] = Date.now(); inflight = null; };
+    if (login && hostSrc) {
+      // Oturum kapanmış (site giriş sayfasına yönlendirdi): bu cihazda o siteyi 1 saat deneme, kullanıcıya haber ver
+      pausedUntil[hostSrc] = Date.now() + 60 * MIN;
+      if (crawl?.source === hostSrc) crawl = null;
+      if (task) last[task] = Date.now();
+      inflight = null;
+      return onChallenge?.(url, { login: true });
+    }
     if (challenge) {
       onChallenge?.(url);
       // Doğrulama ekranında beklemeyelim: görevi ertele (kullanıcı geçince sonraki turda tekrar denenir)

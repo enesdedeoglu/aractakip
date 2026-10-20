@@ -114,24 +114,37 @@ function emailText(alert) {
   return out.join('\n');
 }
 
-async function sendEmail(alert) {
+async function mailTransport() {
   const { MAIL_TO, SMTP_USER, SMTP_PASS } = process.env;
-  if (!MAIL_TO || !SMTP_USER || !SMTP_PASS) return false;
+  if (!MAIL_TO || !SMTP_USER || !SMTP_PASS) return null;
   const nodemailer = (await import('nodemailer')).default;
   const port = Number(process.env.SMTP_PORT || 465);
-  const transport = nodemailer.createTransport({
+  return nodemailer.createTransport({
     host: process.env.SMTP_HOST || 'smtp.gmail.com',
     port,
     secure: port === 465,
     auth: { user: SMTP_USER, pass: SMTP_PASS },
   });
+}
+
+async function sendEmail(alert) {
+  const transport = await mailTransport();
+  if (!transport) return false;
   await transport.sendMail({
-    from: `"Tesla İlan Takip" <${SMTP_USER}>`,
-    to: MAIL_TO,
+    from: `"Tesla İlan Takip" <${process.env.SMTP_USER}>`,
+    to: process.env.MAIL_TO,
     subject: subjectOf(alert),
     text: emailText(alert),
     html: emailHtml(alert),
   });
+  return true;
+}
+
+/** Sistem uyarısı (ör. "tablette sahibinden girişi gerekiyor"): düz metin mail */
+export async function sendNotice(subject, text) {
+  const transport = await mailTransport();
+  if (!transport) return false;
+  await transport.sendMail({ from: `"Tesla İlan Takip" <${process.env.SMTP_USER}>`, to: process.env.MAIL_TO, subject, text });
   return true;
 }
 
