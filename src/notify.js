@@ -3,7 +3,7 @@
 //   MAIL_TO, SMTP_USER, SMTP_PASS (Gmail uygulama şifresi), SMTP_HOST (vars: smtp.gmail.com), SMTP_PORT (vars: 465)
 //   NTFY_TOPIC (opsiyonel), TELEGRAM_BOT_TOKEN + TELEGRAM_CHAT_ID (opsiyonel)
 //   SITE_URL: web arayüzünün adresi (e-postadaki bağlantı için)
-import { execFile } from 'node:child_process';
+import { execFile, spawn } from 'node:child_process';
 import { log } from './util.js';
 
 const SOURCE_NAMES = { arabam: 'arabam.com', sahibinden: 'sahibinden', otokoc: 'Otokoç 2. El', borusan: 'Borusan Next' };
@@ -168,8 +168,13 @@ async function sendTelegram(alert) {
 export function notifyDesktop(title, message) {
   if (process.env.CI) return;
   if (process.platform === 'android') {
-    // Termux:API kuruluysa Android bildirimi
-    execFile('termux-notification', ['--title', title, '--content', message, '--sound'], () => {});
+    // Termux:API kuruluysa Android bildirimi. Termux:API uygulaması yanıt vermezse komut süresiz takılıyor
+    // (tablette yüzlercesi birikip belleği doldurdu): 20 sn'de bitmezse alt işlemiyle birlikte kapat.
+    const child = spawn('termux-notification', ['--title', title, '--content', message, '--sound'], { detached: true, stdio: 'ignore' });
+    child.on('error', () => {});
+    const timer = setTimeout(() => { try { process.kill(-child.pid, 'SIGKILL'); } catch { /* bitmiş */ } }, 20_000);
+    child.on('exit', () => clearTimeout(timer));
+    child.unref();
     return;
   }
   if (process.platform !== 'darwin') return;
