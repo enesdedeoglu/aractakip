@@ -35,20 +35,36 @@ function report(where, e) {
   fetch(`${AGENT}/log`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ where, error: String(e && (e.message || e)) }) }).catch(() => {});
 }
 
+// Aynı sekmede günlerce yüzlerce sayfa açılınca tarayıcının belleği şişiyor (tablette tek sekme ~750 MB'a
+// çıkıp sayfalar yanıt vermez oldu, Android de bellek için ajanı kapattı). Sekme belirli aralıkla yenisiyle değiştirilir.
+const RECYCLE_MS = 2 * 3600e3;
+
+async function recycle(tab, url, extra = {}) {
+  const fresh = await api.tabs.create({ url, active: true, ...extra });
+  await set({ tabId: fresh.id, tabSince: Date.now() });
+  await api.tabs.remove(tab.id).catch(() => {});
+  report('info', `takip sekmesi bellek için yenilendi: ${tab.id} → ${fresh.id}`);
+}
+
 async function open(url) {
+  const { tabId, tabSince = 0 } = await get();
+  const old = Date.now() - tabSince > RECYCLE_MS;
   if (await isAndroid()) {
     // Android'de Firefox arka plandaki sekmeleri yüklemiyor ve sabitlenmiş sekme yok.
     // Tablet bu işe ayrıldığından sayfa doğrudan öndeki sekmede açılır.
     let [tab] = await api.tabs.query({ active: true, currentWindow: true });
+    if (tab && tab.id === tabId && old) return recycle(tab, url);
     if (!tab) tab = await api.tabs.create({ url });
     else if (tab.url === url) await api.tabs.reload(tab.id); // aynı adres: güncelleme sayfayı yenilemeyebilir
     else await api.tabs.update(tab.id, { url });
-    const { tabId } = await get();
-    if (tabId !== tab.id) report('info', `takip sekmesi: ${tab.id}`);
-    await set({ tabId: tab.id });
+    if (tabId !== tab.id) {
+      report('info', `takip sekmesi: ${tab.id}`);
+      await set({ tabId: tab.id, tabSince: Date.now() });
+    }
     return;
   }
   let tab = await ourTab();
+  if (tab && old && tabSince) return recycle(tab, url, { pinned: true, active: false, windowId: tab.windowId });
   if (tab) { await api.tabs.update(tab.id, { url }); return; }
   try {
     tab = await api.tabs.create({ url, pinned: true, active: false });
@@ -58,7 +74,7 @@ async function open(url) {
     const win = await api.windows.create({ url, focused: false, state: 'minimized' });
     tab = win.tabs[0];
   }
-  await set({ tabId: tab.id });
+  await set({ tabId: tab.id, tabSince: Date.now() });
 }
 
 async function tick() {
