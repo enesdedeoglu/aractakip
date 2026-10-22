@@ -147,6 +147,25 @@ api.runtime.onMessage.addListener((msg, sender) => {
   })();
 });
 
+// Android'deki Firefox kendini "Android 10; Mobile" diye tanıtıyor; arabam ve sahibinden de bu yüzden
+// telefon düzeni (tablo olmayan sayfa) gönderiyor. Takip sekmesinin bu sitelere isteklerinde, Firefox'un
+// kendi "Masaüstü sitesi" modunun kullandığı kimlik gönderilir. Diğer sekmelere dokunulmaz.
+let trackedTab = null;
+get().then((s) => { trackedTab = s.tabId ?? null; });
+api.storage.onChanged.addListener((ch) => { if (ch.tabId) trackedTab = ch.tabId.newValue ?? null; });
+const DESKTOP_UA = (() => {
+  const rv = (navigator.userAgent.match(/rv:([\d.]+)/) || [])[1];
+  return rv ? `Mozilla/5.0 (X11; Linux x86_64; rv:${rv}) Gecko/20100101 Firefox/${rv}` : null;
+})();
+if (api.webRequest?.onBeforeSendHeaders && DESKTOP_UA && /Android/.test(navigator.userAgent)) {
+  // Arka plan betiği bu istekle uyanmış olabilir: takip sekmesi numarası henüz yüklenmediyse bekle
+  api.webRequest.onBeforeSendHeaders.addListener(async (d) => {
+    if ((trackedTab ?? (trackedTab = (await get()).tabId ?? null)) !== d.tabId) return {};
+    for (const h of d.requestHeaders) if (h.name.toLowerCase() === 'user-agent') h.value = DESKTOP_UA;
+    return { requestHeaders: d.requestHeaders };
+  }, { urls: ['https://www.sahibinden.com/*', 'https://www.arabam.com/*'], types: ['main_frame', 'sub_frame', 'xmlhttprequest'] }, ['blocking', 'requestHeaders']);
+}
+
 api.alarms.onAlarm.addListener((a) => { if (a.name === 'tick') tick(); });
 // Servis çalışanı her uyandığında alarmı sıfırlamamak için yalnızca yoksa oluştur
 async function schedule() {
