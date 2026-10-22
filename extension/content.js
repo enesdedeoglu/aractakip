@@ -45,6 +45,7 @@
     // Liste satırları sayfada ayrıştırılır; yalnızca gerekli alanlar gönderilir (~25 KB).
     // (Tüm satır HTML'i ~360 KB; Android'deki Firefox bu büyüklükteki mesajları sessizce düşürüyor.)
     const rows = [...document.querySelectorAll('tr.listing-list-item[id^="listing"]')];
+    const cards = rows.length ? [] : [...document.querySelectorAll('div.listing-list-item[id^="listing"]')];
     if (rows.length) {
       const arows = rows.map((tr) => {
         const img = tr.querySelector('img.listing-image');
@@ -57,6 +58,26 @@
           cells: [...tr.querySelectorAll('td')].map((td) => td.textContent.replace(/\s+/g, ' ').trim().slice(0, 200)),
           priceText: tr.querySelector('.listing-price')?.textContent || '',
           locs: [...tr.querySelectorAll('span[title]')].map((sp) => sp.getAttribute('title')),
+          image: img ? img.getAttribute('data-src') || img.getAttribute('src') : null,
+        };
+      });
+      send({ kind: 'arabam', arows });
+      return true;
+    }
+    if (cards.length) {
+      // Mobil düzen (Android'de arabam tablo yerine kart gösteriyor): model adresten, yıl/km detaydan gelir
+      const arows = cards.map((d) => {
+        const img = d.querySelector('img');
+        const a = d.querySelector('a[href^="/ilan/"]');
+        return {
+          mobile: true,
+          id: d.getAttribute('data-imp-id') || d.id.replace('listing', ''),
+          href: a ? a.getAttribute('href') : '',
+          modelName: '',
+          title: (d.querySelector('h3')?.textContent || '').replace(/\s+/g, ' ').trim(),
+          cells: [],
+          priceText: d.querySelector('.listing-price')?.textContent || '',
+          locs: (d.querySelector('.listing-location span')?.textContent || '').split(',').map((x) => x.trim()).filter(Boolean),
           image: img ? img.getAttribute('data-src') || img.getAttribute('src') : null,
         };
       });
@@ -84,7 +105,7 @@
 
   // arabam için adım adım tanı (yalnızca küçük metin mesajları; sorun çözülünce kaldırılabilir)
   const diag = (t) => host === 'www.arabam.com' && api.runtime.sendMessage({ type: 'diag', where: 'arabam', error: t }).catch(() => {});
-  diag(`betik çalıştı: ${location.href.slice(0, 90)} durum=${document.readyState} satır=${document.querySelectorAll('tr.listing-list-item').length}`);
+  diag(`betik çalıştı: ${location.href.slice(0, 90)} durum=${document.readyState} satır=${document.querySelectorAll('.listing-list-item').length}`);
 
   // Sitenin "olağan dışı erişim" engel sayfası: beklemeden bildir, ajan o siteyi saatlerce bekletir
   if (/olağan\s*dışı\s*erişim|olağandışı erişim|unusual (traffic|access)/i.test((document.body?.innerText || '').slice(0, 2000))) {
@@ -104,7 +125,7 @@
     const ok = read();
     if (ok) { diag('okundu ve gönderildi'); return; }
     if (++tries <= 6) setTimeout(attempt, 2500);
-    else diag(`okunamadı: satır=${document.querySelectorAll('tr.listing-list-item').length} tr=${document.querySelectorAll('tr').length} başlık="${document.title.slice(0, 60)}"`);
+    else diag(`okunamadı: satır=${document.querySelectorAll('.listing-list-item').length} tr=${document.querySelectorAll('tr').length} başlık="${document.title.slice(0, 60)}"`);
   };
   attempt();
 })();

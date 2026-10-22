@@ -370,3 +370,22 @@ test('Mac ajanı main\'deki yeni kodu kendisi çeker, yerel değişikliğe dokun
     fs.rmSync(tmp, { recursive: true, force: true });
   }
 });
+
+test('arabam mobil kart düzeni: model adresten, km başlıktan', async () => {
+  const { fromRows, modelFromHref } = await import('../src/sources/arabam.js');
+  assert.equal(modelFromHref('/ilan/galeriden-satilik-tesla-model-y-rwd-juniper/baslik/44688889'), 'Tesla Model Y RWD Juniper');
+  assert.equal(modelFromHref('/ilan/yetkili-bayiden-satilik-tesla-model-3-long-range/x/1'), 'Tesla Model 3 Long Range');
+  const { listings, rowCount } = fromRows([
+    { mobile: true, id: '44972280', href: '/ilan/galeriden-satilik-tesla-model-y-rwd-legacy/dc-garaj/44972280', title: 'TESLA MODEL Y/2025/26.000KM/SOLID BLACK', cells: [], priceText: ' 2.729.750 TL ', locs: ['İstanbul', 'Kağıthane'], image: 'https://x/a_240x180.jpg' },
+    { mobile: true, id: '44983429', href: '/ilan/sahibinden-satilik-renault-clio-1-0-tce-joy/tesla-ekranli/44983429', title: 'Tesla ekranlı Clio', cells: [], priceText: '1.170.000 TL', locs: [], image: null },
+  ]);
+  assert.equal(rowCount, 2);
+  assert.equal(listings.length, 1);
+  const [l] = listings;
+  assert.equal(l.modelRaw, 'Tesla Model Y RWD Legacy');
+  assert.equal(l.km, 26000);
+  assert.equal(l.price, 2729750);
+  assert.equal(l.year, null);
+  assert.equal(l.city, 'İstanbul');
+  assert.equal(l.sellerType, 'galeri');
+});

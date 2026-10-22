@@ -13,10 +13,20 @@ function bigImage(src) {
   return src.replace(/_\d+x\d+\.jpg$/, '_580x435.jpg');
 }
 
+// Mobil düzende (Android) model adı ayrı alanda yok; ilan adresinde yazıyor:
+//   /ilan/galeriden-satilik-tesla-model-y-long-range/... → "Tesla Model Y Long Range"
+export function modelFromHref(href) {
+  const slug = (String(href || '').match(/^\/ilan\/[a-z-]+?-satilik-([^/]+)\//) || [])[1];
+  const word = (w) => (/^(rwd|awd|lr|sr)$/.test(w) ? w.toUpperCase() : w.charAt(0).toLocaleUpperCase('tr-TR') + w.slice(1));
+  return slug ? slug.split('-').map(word).join(' ') : '';
+}
+
 // Tek satırın yapısal hali (sayfada eklenti tarafından ya da burada cheerio ile çıkarılır)
 //   { id, href, modelName, title, cells: string[], priceText, locs: string[], image }
+// Mobil kart düzeninde (mobile: true) yıl/km/tarih sütunu yok: boş kalır, ilan detayından tamamlanır
 function rowToListing(r) {
-  if (!/^tesla\b/i.test(r.modelName || '')) return null; // metin aramasında çıkan alakasız ilanlar
+  const modelName = r.modelName || modelFromHref(r.href);
+  if (!/^tesla\b/i.test(modelName)) return null; // metin aramasında çıkan alakasız ilanlar
   const cells = (r.cells || []).map((c) => String(c).replace(/\s+/g, ' ').trim());
   const href = r.href || '';
   const dateCell = cells.find((c) => /\d{1,2}\s+\S+\s+\d{4}$/.test(c));
@@ -26,9 +36,9 @@ function rowToListing(r) {
     sourceId: String(r.id),
     url: BASE + href,
     title: (r.title || '').trim(),
-    modelRaw: r.modelName.trim(),
+    modelRaw: modelName.trim(),
     year: Number(cells.find((c) => /^(19|20)\d{2}$/.test(c))) || null,
-    km: parseNumber(cells.find((c) => /^[\d.]+\s*KM$/i.test(c))),
+    km: parseNumber(cells.find((c) => /^[\d.]+\s*KM$/i.test(c))) ?? (r.mobile ? kmFromTitle(r.title) : null),
     price: parseNumber(r.priceText),
     city: r.locs?.[0] || null,
     district: r.locs?.[1] || null,
