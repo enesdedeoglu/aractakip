@@ -6,7 +6,7 @@
   <title>Tesla İlan Takip</title>
   <meta name="description" content="sahibinden, arabam.com, Otokoç ve Borusan Next'teki tüm Tesla ilanları: kategoriler, piyasa analizi ve tavsiyeler.">
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23e82127'/%3E%3Cpath d='M6 10c6-3 14-3 20 0l-1.5 2c-1.6-.6-3.2-1-4.8-1.2L16 26l-3.7-15.2c-1.6.2-3.2.6-4.8 1.2z' fill='white'/%3E%3C/svg%3E">
-  <link rel="stylesheet" href="styles.css?v=cf20d85d">
+  <link rel="stylesheet" href="styles.css?v=b39d9e29">
 </head>
 <body>
   <div class="login" id="login" hidden>
@@ -116,6 +116,7 @@
       <div class="panel">
         <h2>Segment özeti</h2>
         <div class="table-wrap"><table class="seg" id="segTable"></table></div>
+        <p class="hint" id="saleInfo"></p>
         <p class="hint" id="dmgEffects"></p>
       </div>
       <div class="panel">
@@ -123,6 +124,7 @@
         <ul class="explain">
           <li><b>Beklenen fiyat:</b> Tüm aktif Tesla ilanları üzerinde model, nesil (Legacy/Juniper, Klasik/Highland), versiyon, model yılı, km ve hasar durumuna (ağır hasar, değişen, boya, tramer) göre kurulan regresyon modeli. Satıştaki versiyonların sıfır fiyatı da modele girer; az ilanlı versiyonlar ona dayanır.</li>
           <li><b>Aralık:</b> Her versiyonun tahmin hatası, ilanın kendisi dışarıda bırakılarak ölçülür. Kartta “2,25–2,45 M arası”, benzer ilanların ~%80'inin düştüğü aralıktır; az ilanlı versiyonda geniştir.</li>
+          <li><b>Teklif önerisi:</b> Gerçekçi satış seviyesi (beklenen fiyat × kısa sürede kalkan ilanlardan ölçülen satış oranı) ile ilan fiyatından pazarlık payı düşülmüş değerin küçüğü; uzun süredir ilanda olan ve fiyatı düşen ilanlarda pay artar.</li>
           <li><b>Puan (0-100):</b> Fiyatın aralıktaki yeri + tramer/boya/değişen + satıcı tipi + km/yıl + fiyat düşüşleri + ilanda kalma süresi.</li>
           <li><b>Etiketler:</b> 🔥 Fırsat (aralığın altında, versiyonu kesin, hasar kaydı yok, sıfır fiyatının altında), 👍 İyi fiyat (beklenenin altında), ⚖️ Piyasa (aralıkta), 💸 Pahalı (aralığın üstünde), ⚠️ Şüpheli (aralığın çok altında: gizli ağır hasar, yanlış versiyon ya da dolandırıcılık olabilir).</li>
           <li><b>Versiyon:</b> 2025 Juniper'de kategori “Standart” ama başlıkta cam tavan, arka ekran, premium, koltuk soğutma geçiyorsa Premium sayılır. Versiyonu yazmayan ilanlar fiyatına en uyan versiyona atanır ve kartta uyarı çıkar.</li>
@@ -182,6 +184,6 @@
   </dialog>
 
   <div class="toasts" id="toasts" aria-live="polite"></div>
-  <script src="app.js?v=cf20d85d"></script>
+  <script src="app.js?v=b39d9e29"></script>
 </body>
 </html>
