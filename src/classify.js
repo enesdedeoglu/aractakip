@@ -16,9 +16,20 @@ export function detectModel(text) {
   return 'Diğer';
 }
 
-export function detectGeneration(model, text, year) {
+const GEN_Y = { juniper: /juniper|junper|yeni\s*kasa/, legacy: /legacy|legasy|eski\s*kasa/ };
+
+/**
+ * @param title  ilan başlığı: satıcının kendi yazdığı nesil, sitenin kategori alanından önce gelir
+ *               (2025 Legacy'ler sık sık "(Juniper)" kategorisine konuyor)
+ */
+export function detectGeneration(model, text, year, title = '') {
   const t = fold(text);
   if (model === 'Model Y') {
+    // Juniper Türkiye'de 2025'te satışa çıktı; 2024 ve öncesi "(Juniper)" kategorisinde olsa da Legacy
+    if (year && year <= 2024) return 'Legacy';
+    const tt = fold(title);
+    const tj = GEN_Y.juniper.test(tt), tl = GEN_Y.legacy.test(tt);
+    if (tj !== tl) return tj ? 'Juniper' : 'Legacy';
     if (/juniper/.test(t)) return 'Juniper';
     if (/legacy/.test(t)) return 'Legacy';
     return year && year >= 2025 ? 'Juniper' : 'Legacy';
@@ -37,9 +48,12 @@ const RE = {
   awd: /\bawd\b|dual\s*motor|cift\s*motor|4wd|4x4|dort\s*ceker|4\s*ceker|\b\d{2,3}d\b/,
   rwd: /\brwd\b|arkadan\s*(itis|itme|cekis)|tek\s*motor|single\s*motor/,
   premium: /premium/,
-  std: /standart|standard|\bsr\+?\b|\bbase\b/,
+  std: /standart|standard|\bstandar\b|\bsr\+?\b|\bbase\b/,
   // "Standart menzil / SR": 2025'te satılan Juniper arkadan itiş (bugünkü adıyla Premium) için de kullanılıyor
-  stdRange: /standart\s*menzil|standard\s*range|\bsr\+?\b/,
+  stdRange: /standar[dt]?\s*(menzil|range)|\bsr\+?\b/,
+  // Kasım 2025'te gelen sade Standart'ta olmayan donanımlar: başlıkta geçiyorsa araç eski tam donanımlı
+  // arkadan itiştir (Premium). "Soğutma" ilanlarda koltuk havalandırması anlamında kullanılıyor.
+  premiumKit: /premium|c(am)?\.?\s*tavan|panoramik|tavan\s*perde|arka\s*ekran|koltuk\s*sogutma|sogutma|havalandirmali|15\s*hoparlor/,
 };
 
 /**
@@ -61,10 +75,12 @@ function trimOf(model, text, { generation, year, specs, guess = true } = {}) {
   if (model === 'Model Y') {
     if (lr || awd) return out(rwd ? 'Long Range RWD' : 'Long Range AWD');
     if (generation === 'Juniper') {
-      if (RE.premium.test(t)) return out('Premium');
+      // 2026'da "Premium" arkadan itiş = Premium Long Range RWD (eski kısa menzilli Premium Kasım 2025'te kalktı)
+      if (RE.premium.test(t)) return out(year >= 2026 ? 'Long Range RWD' : 'Premium');
       if (RE.std.test(t) && !RE.stdRange.test(t)) return out('Standart');
       if (rwd || RE.stdRange.test(t)) {
         if (!guess) return out('Belirsiz');
+        if (RE.stdRange.test(t) && year < 2026) return out('Premium');
         // Standart Kasım 2025'te geldi, aynı anda eski arkadan itiş (Premium) satıştan kalktı
         return out(year >= 2026 ? 'Standart' : 'Premium', true);
       }
@@ -151,10 +167,21 @@ export function classify(l) {
   const structured = `${l.modelRaw || ''} ${sp.series || ''} ${sp.trim || ''} ${sp.drive || ''}`;
   const text = `${structured} ${l.title || ''}`;
   const model = detectModel(`${l.modelRaw || ''} ${l.title || ''}`);
-  const generation = detectGeneration(model, text, l.year);
+  const generation = detectGeneration(model, text, l.year, l.title);
   const ctx = { generation, year: l.year, specs: sp };
   let { trim, guessed } = trimOf(model, structured, { ...ctx, guess: false });
   if (trim === 'Belirsiz') ({ trim, guessed } = trimOf(model, text, ctx));
+  const title = fold(l.title);
+  let trimAlt;
+  if (model === 'Model Y' && generation === 'Juniper' && (l.year ?? 0) <= 2025 && trim === 'Standart') {
+    // Satıcılar 2025'in tam donanımlı arkadan itişlilerini sık sık "Standart" kategorisine koyuyor
+    if (RE.premiumKit.test(title) || RE.stdRange.test(title)) trim = 'Premium';
+    // Başlık versiyon söylemiyorsa kategori şüpheli: fiyat modeli iki versiyondan uyanı seçer (analyze.resolveTrims)
+    else if (!RE.std.test(title)) trimAlt = ['Standart', 'Premium'];
+  }
+  if (model === 'Model Y' && generation === 'Juniper' && guessed) {
+    trimAlt = (l.year ?? 0) >= 2026 ? ['Standart', 'Long Range RWD'] : ['Premium', 'Standart'];
+  }
   const { tags, warnings } = detectTags(`${l.title || ''} ${l.description || ''}`);
   if (l.damage?.original) {
     for (const t of ['Boyasız', 'Değişensiz']) if (!tags.includes(t)) tags.push(t);
@@ -168,6 +195,7 @@ export function classify(l) {
     generation,
     trim,
     trimGuessed: guessed || undefined,
+    trimAlt,
     segment: `${model} · ${generation} · ${trim}`,
     kmBand,
     tags,

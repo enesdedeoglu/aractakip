@@ -34,6 +34,41 @@ test('Juniper versiyonları: Standart, Premium, Long Range ayrı', () => {
   assert.equal(trim({ modelRaw: 'Tesla Model Y RWD (Legacy)', year: 2023 }), 'Standart RWD');
 });
 
+test('2025 "Standart (Juniper)" kategorisindeki tam donanımlı arkadan itiş Premium sayılır', () => {
+  const trim = (title, year = 2025, modelRaw = 'Tesla Model Y Standart (Juniper)') => classify({ modelRaw, title, year }).trim;
+  for (const t of ['2025 TESLA CAM TAVAN ARKA EKRAN', 'MODEL Y STANDART MENZİL HATASIZ', 'Model Y Standart Range 2025 Model',
+    'TESLA MODEL Y PREMIUM JUNIPER', 'C.TAVAN BOYASIZ', 'KOLTUK ISITMA SOĞUTMA 19 JANT', 'TAVAN PERDELİ PPF']) {
+    assert.equal(trim(t), 'Premium', t);
+  }
+  // sahibinden kategorisi ("Tesla Model Y Standart") ve "Standart Range" yazımı da
+  assert.equal(trim('2025 MODEL Y STANDART RANGE 62.000KM', 2025, 'Tesla Model Y RWD'), 'Premium');
+  assert.equal(trim('ARKA EKRAN', 2025, 'Tesla Model Y Standart'), 'Premium');
+  // Gerçek Standart: başlıkta donanım yok
+  assert.equal(trim('HATASIZ BOYASIZ STANDART JUNİPER'), 'Standart');
+  assert.equal(trim('HATASIZ & SORUNSUZ ÇİFT CAMLI 2026 MAYIS ÇIKIŞLI'), 'Standart');
+  // 2026'da Standart dışındaki arkadan itiş Premium Long Range'dir
+  assert.equal(trim('ARKA EKRAN', 2026), 'Standart', '2026 Standart başlığı kuralı uygulanmaz');
+  assert.equal(trim('LG5M BATARYA', 2026, 'Tesla Model Y Premium (Juniper)'), 'Long Range RWD');
+});
+
+test('versiyonu belirsiz Juniper için fiyatla seçilecek alternatifler', () => {
+  const c = (o) => classify({ modelRaw: 'Tesla Model Y Standart (Juniper)', year: 2025, ...o });
+  assert.deepEqual(c({ title: 'satılık 2025 model Y' }).trimAlt, ['Standart', 'Premium']);
+  assert.equal(c({ title: 'TESLA STANDART JUNİPER' }).trimAlt, undefined, 'başlık Standart diyorsa kesin');
+  assert.deepEqual(classify({ modelRaw: 'Tesla Model Y RWD', title: 'TESLA', year: 2025 }).trimAlt, ['Premium', 'Standart']);
+  assert.deepEqual(classify({ modelRaw: 'Tesla Model Y RWD', title: 'TESLA', year: 2026 }).trimAlt, ['Standart', 'Long Range RWD']);
+  assert.equal(classify({ modelRaw: 'Tesla Model Y Premium (Juniper)', title: 'TESLA', year: 2025 }).trimAlt, undefined);
+});
+
+test('nesil: 2024 ve öncesi Legacy; başlıktaki nesil kategoriden önce gelir', () => {
+  const gen = (o) => classify({ modelRaw: 'Tesla Model Y Standart (Juniper)', ...o }).generation;
+  assert.equal(gen({ year: 2024, title: 'Tesla Model Y Standart Range 2024 Model' }), 'Legacy');
+  assert.equal(gen({ year: 2024, modelRaw: 'Tesla Model Y RWD', title: 'Juniper pahalı, en mantıklısı 2024' }), 'Legacy');
+  assert.equal(gen({ year: 2025, title: 'Tesla Model Y Standart (RWD Legasy) 2025 Model' }), 'Legacy');
+  assert.equal(gen({ year: 2025, title: 'Tesla Model Y Standart' }), 'Juniper');
+  assert.equal(gen({ year: 2025, modelRaw: 'Tesla Model Y RWD (Legacy)', title: 'JUNIPER RWD' }), 'Juniper');
+});
+
 test('olumsuz hasar ifadeleri uyarı üretmez', () => {
   const w = (title) => classify({ modelRaw: 'Tesla Model Y', title }).warnings;
   assert.deepEqual(w('ağır hasar kaydı yok, hasarlı değil'), []);
