@@ -5,7 +5,8 @@
 //   SITE_URL: web arayüzünün adresi (e-postadaki bağlantı için)
 import { execFile, spawn } from 'node:child_process';
 import { log } from './util.js';
-import { fmtRange, pctOf } from './analyze.js';
+import { fmtRange, fmtM, pctOf } from './analyze.js';
+import { fold } from './classify.js';
 
 const SOURCE_NAMES = { arabam: 'arabam.com', sahibinden: 'sahibinden', otokoc: 'Otokoç 2. El', borusan: 'Borusan Next' };
 const LABEL_EMOJI = { 'Fırsat': '🔥', 'İyi fiyat': '👍', 'Piyasa': '⚖️', 'Pahalı': '💸', 'Şüpheli': '⚠️' };
@@ -13,9 +14,37 @@ const LABEL_EMOJI = { 'Fırsat': '🔥', 'İyi fiyat': '👍', 'Piyasa': '⚖️
 const tl = (n) => (n == null ? '-' : `${Math.round(n).toLocaleString('tr-TR')} TL`);
 const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
+/** "Juniper Standart", "Model Y Juniper Standart", "Standart" ya da kartlardaki segment adı */
+export function matchesVersion(l, v) {
+  if (!l?.c) return false;
+  const want = fold(v).replace(/[·|]/g, ' ').replace(/\s+/g, ' ').trim();
+  const { model, generation, trim } = l.c;
+  return [trim, `${generation} ${trim}`, `${model} ${generation} ${trim}`, `${model} ${trim}`].some((x) => fold(x) === want);
+}
+
+/**
+ * Takip kuralı (alerts.watches): ör. { "version": "Juniper Standart", "maxPrice": 2300000, "noHeavyDamage": true }.
+ * Kurala uyan ilan genel filtreden bağımsız olarak bildirilir. @returns kuralın adı veya null
+ */
+export function watchHit(l, alerts) {
+  if (!l?.c || l.status === 'removed') return null;
+  for (const w of alerts.watches || []) {
+    if (w.version && !matchesVersion(l, w.version)) continue;
+    if (w.model && l.c.model !== w.model) continue;
+    if (w.maxPrice && !(l.price <= w.maxPrice)) continue;
+    if (w.maxKm && !(l.km != null && l.km <= w.maxKm)) continue;
+    if (w.minYear && !(l.year >= w.minYear)) continue;
+    if (w.noHeavyDamage !== false && l.c.heavy === 'var') continue;
+    if (w.labels?.length && !w.labels.includes(l.a?.label)) continue;
+    return w.name || [w.version || w.model || 'Tesla', w.maxPrice && `≤ ${fmtM(w.maxPrice)}`, w.maxKm && `≤ ${Math.round(w.maxKm / 1000)} bin km`, w.noHeavyDamage !== false && 'hasarsız'].filter(Boolean).join(', ');
+  }
+  return null;
+}
+
 export function passesAlertFilter(l, alerts) {
   if (!l) return false;
   if (alerts.models?.length && !alerts.models.includes(l.c?.model)) return false;
+  if (alerts.versions?.length && !alerts.versions.some((v) => matchesVersion(l, v))) return false;
   if (alerts.maxPrice && l.price > alerts.maxPrice) return false;
   if (alerts.maxKm && l.km > alerts.maxKm) return false;
   if (alerts.minYear && l.year < alerts.minYear) return false;
@@ -32,17 +61,24 @@ export function buildAlert(db, changes, alerts) {
   // Zaten bilinen bir aracın başka sitede de ilana çıkması "yeni araç" değildir
   const knownCar = (l) => l.dup && l.dup.members.some((k) => k !== l.key && db.listings[k] && Date.parse(db.listings[k].firstSeen) < Date.parse(l.firstSeen));
   // Kaldırılıp yeniden ilana konan araç yeni değildir; fiyatı düştüyse fiyat düşüşü olarak bildirilir
+  // Takip kuralına uyan ilan genel filtreden bağımsız bildirilir
+  const watched = new Map();
+  const passes = (l) => {
+    const w = watchHit(l, alerts);
+    if (w) watched.set(l.key, w);
+    return passesAlertFilter(l, alerts) || !!w;
+  };
   const relistDrops = changes.added.map(get)
-    .filter((l) => l?.relistOf && get(l.relistOf) && l.price < get(l.relistOf).price && passesAlertFilter(l, alerts))
+    .filter((l) => l?.relistOf && get(l.relistOf) && l.price < get(l.relistOf).price && passes(l))
     .map((l) => ({ key: l.key, from: get(l.relistOf).price, to: l.price, l, relist: true }));
   const added = [...changes.added.map(get).filter((l) => l && recent(l) && !knownCar(l) && !l.relistOf), ...changes.returned.map(get)]
-    .filter((l) => passesAlertFilter(l, alerts))
-    .sort((a, b) => (b.a?.score ?? 0) - (a.a?.score ?? 0));
-  const prices = alerts.notifyPriceDrops
-    ? [...changes.priceChanged.map((c) => ({ ...c, l: get(c.key) })).filter((c) => c.l && passesAlertFilter(c.l, alerts)), ...relistDrops]
-    : [];
+    .filter((l) => passes(l))
+    .sort((a, b) => (watched.has(b.key) - watched.has(a.key)) || (b.a?.score ?? 0) - (a.a?.score ?? 0));
+  // Fiyat değişimi: genel ayar kapalı olsa da takipteki ilanın düşüşü bildirilir
+  const prices = [...changes.priceChanged.map((c) => ({ ...c, l: get(c.key) })), ...relistDrops]
+    .filter((c) => c.l && passes(c.l) && (alerts.notifyPriceDrops || (watched.has(c.l.key) && c.to < c.from)));
   const removed = alerts.notifyRemoved ? changes.removed.map(get).filter((l) => passesAlertFilter(l, alerts)) : [];
-  return { added, prices, removed, db, empty: !added.length && !prices.length && !removed.length };
+  return { added, prices, removed, db, watched, empty: !added.length && !prices.length && !removed.length };
 }
 
 function line(l) {
@@ -51,6 +87,8 @@ function line(l) {
 
 export function subjectOf(alert) {
   const parts = [];
+  const hits = [...new Map([...alert.added, ...alert.prices.map((p) => p.l)].filter((l) => alert.watched?.has(l.key)).map((l) => [l.key, l])).values()];
+  if (hits.length) parts.push(`🎯 ${alert.watched.get(hits[0].key)}: ${hits[0].c.generation !== '-' ? `${hits[0].c.generation} ` : ''}${hits[0].c.trim} ${tl(hits[0].price)}${hits.length > 1 ? ` (+${hits.length - 1})` : ''}`);
   if (alert.added.length) {
     const best = alert.added[0];
     parts.push(alert.added.length === 1
@@ -72,7 +110,7 @@ function otherSites(l, db) {
     `<a href="${esc(o.url)}" style="color:#2f6fdb">${esc(SOURCE_NAMES[o.source])} ${tl(o.price)}</a>`).join(' · ')}</div>`;
 }
 
-function card(l, extra = '', db = null) {
+function card(l, extra = '', db = null, watch = null) {
   const a = l.a || {};
   const color = { 'Fırsat': '#0a7d32', 'İyi fiyat': '#2f6fdb', 'Piyasa': '#666', 'Pahalı': '#b35900', 'Şüpheli': '#c0182b' }[a.label] || '#666';
   return `
@@ -80,11 +118,12 @@ function card(l, extra = '', db = null) {
     <table role="presentation" cellpadding="0" cellspacing="0" width="100%"><tr>
       ${l.image ? `<td width="132" valign="top"><a href="${esc(l.url)}"><img src="${esc(l.image)}" width="120" style="border-radius:8px;display:block" alt=""></a></td>` : ''}
       <td valign="top" style="font-family:Arial,sans-serif;font-size:14px;color:#222">
+        ${watch ? `<div style="color:#6a1b9a;font-size:12px;font-weight:bold">🎯 Takip: ${esc(watch)}</div>` : ''}
         <div><a href="${esc(l.url)}" style="color:#111;font-weight:bold;text-decoration:none">${esc(l.c?.model)} ${esc(l.c?.generation)} ${esc(l.c?.trim)} · ${l.year || ''}</a></div>
         <div style="margin:4px 0;font-size:18px;font-weight:bold">${tl(l.price)} ${extra}</div>
         <div style="color:#555">${[l.km != null ? l.km.toLocaleString('tr-TR') + ' km' : 'km ?', l.city, SOURCE_NAMES[l.source], l.sellerType].filter(Boolean).map(esc).join(' · ')}</div>
         <div style="margin-top:6px"><span style="background:${color};color:#fff;border-radius:10px;padding:2px 8px;font-size:12px">${esc(a.label)} · ${a.score}/100</span>
-        ${a.expected ? `<span style="color:#555;font-size:12px"> beklenen ≈ ${tl(a.expected)} (${a.deviation > 0 ? '+' : ''}${(a.deviation * 100).toFixed(1)}%)${a.expectedLow ? ` · olağan aralık ${fmtRange(a.expectedLow, a.expectedHigh)}` : ''}${a.newRatio ? ` · sıfırın ${pctOf(a.newRatio * 100)}` : ''}</span>` : ''}</div>
+        ${a.expected ? `<span style="color:#555;font-size:12px"> beklenen ≈ ${tl(a.expected)} (${a.deviation > 0 ? '+' : ''}${(a.deviation * 100).toFixed(1)}%)${a.expectedLow ? ` · olağan aralık ${fmtRange(a.expectedLow, a.expectedHigh)}` : ''}${a.newRatio ? ` · sıfırın ${pctOf(a.newRatio * 100)}` : ''}${a.offer ? ` · önerilen teklif ≈ ${fmtM(a.offer)}` : ''}</span>` : ''}</div>
         <div style="margin-top:6px;color:#333">${esc(a.advice)}</div>
         ${(a.cautions || []).length ? `<div style="margin-top:4px;color:#b35900;font-size:12px">⚠ ${a.cautions.map(esc).join('<br>⚠ ')}</div>` : ''}
         ${(a.reasons || []).length ? `<div style="margin-top:4px;color:#0a7d32;font-size:12px">✓ ${a.reasons.slice(0, 4).map(esc).join('<br>✓ ')}</div>` : ''}
@@ -98,8 +137,8 @@ export function emailHtml(alert) {
   const sec = (title, rows) => rows ? `<h3 style="font-family:Arial,sans-serif;margin:20px 0 4px">${title}</h3><table role="presentation" width="100%" cellpadding="0" cellspacing="0">${rows}</table>` : '';
   return `<div style="max-width:640px;margin:auto">
     <h2 style="font-family:Arial,sans-serif">Tesla İlan Takip</h2>
-    ${sec(`Yeni ilanlar (${alert.added.length})`, alert.added.map((l) => card(l, '', alert.db)).join(''))}
-    ${sec(`Fiyat değişimleri (${alert.prices.length})`, alert.prices.map((p) => card(p.l, `<span style="font-size:13px;color:${p.to < p.from ? '#0a7d32' : '#c0182b'}">(${p.to < p.from ? '▼' : '▲'} ${tl(Math.abs(p.to - p.from))}, önce ${tl(p.from)}${p.relist ? ', yeniden ilan' : ''})</span>`, alert.db)).join(''))}
+    ${sec(`Yeni ilanlar (${alert.added.length})`, alert.added.map((l) => card(l, '', alert.db, alert.watched?.get(l.key))).join(''))}
+    ${sec(`Fiyat değişimleri (${alert.prices.length})`, alert.prices.map((p) => card(p.l, `<span style="font-size:13px;color:${p.to < p.from ? '#0a7d32' : '#c0182b'}">(${p.to < p.from ? '▼' : '▲'} ${tl(Math.abs(p.to - p.from))}, önce ${tl(p.from)}${p.relist ? ', yeniden ilan' : ''})</span>`, alert.db, alert.watched?.get(p.l.key))).join(''))}
     ${sec(`Kalkan ilanlar (${alert.removed.length})`, alert.removed.map((l) => card(l, '<span style="font-size:13px;color:#666">(satıldı / kaldırıldı)</span>')).join(''))}
     ${site ? `<p style="font-family:Arial,sans-serif"><a href="${esc(site)}">Tüm ilanları ve piyasa analizini aç →</a></p>` : ''}
     <p style="font-family:Arial,sans-serif;color:#999;font-size:11px">Fiyat tahminleri ilan verilerine dayanan istatistiksel bir modeldir; yatırım tavsiyesi değildir. Ekspertiz yaptırmadan araç almayın.</p>

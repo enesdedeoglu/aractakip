@@ -257,7 +257,8 @@ test('arabam: eklentinin sayfada çıkardığı küçük satırlar', () => {
   assert.match(l.image, /_580x435\.jpg$/);
 });
 
-import { buildMarket, analyzeListing, damageCounts, pctOf } from '../src/analyze.js';
+import { buildMarket, analyzeListing, damageCounts, pctOf, saleSignal, suggestOffer, priceTrend } from '../src/analyze.js';
+import { buildAlert, matchesVersion, watchHit, subjectOf } from '../src/notify.js';
 import { recompute } from '../src/merge.js';
 
 // Sentetik piyasa: rastgelelik yok, fiyatlar versiyona ve km'ye göre belirlenir
@@ -411,6 +412,77 @@ test('fiyat modeli: olağan aralığın çok altındaki hasarsız görünen ilan
   const a = db.listings['sahibinden:61'].a;
   assert.equal(a.label, 'Şüpheli', `sapma ${a.deviation}, z ${a.z}`);
   assert.ok(a.cautions[0].includes('kaydı görünmeyen ağır hasar'));
+});
+
+test('satış sinyali: kısa sürede kalkan ilanlar ucuzsa satış oranı < 1, eskiden kalkanlar ucuzsa piyasa yükseliyor', () => {
+  const now = Date.parse('2026-10-28T12:00:00Z');
+  const extra = [];
+  // 40 kalkmış ilan: w hafta önce kalkmış, fiyatı bugünkü seviyenin %2 + w×%1 altında, 5 günde satılmış
+  for (let i = 0; i < 40; i++) {
+    const w = i % 4, removedAt = new Date(now - w * 7 * 86400000).toISOString();
+    extra.push({ key: `sahibinden:7${i}`, sourceId: `7${i}`, modelRaw: 'Tesla Model Y Premium (Juniper)', year: 2025, km: 20000, status: 'removed', removedAt,
+      publishedAt: new Date(now - (w * 7 + 5) * 86400000).toISOString(), price: Math.round(2950000 * Math.exp(-0.02 - 0.01 * w)) });
+  }
+  const db = market(extra);
+  const sale = saleSignal(Object.values(db.listings), buildMarket(Object.values(db.listings), { newPrices: {} }), now);
+  assert.ok(sale && sale.n === 40);
+  assert.ok(sale.saleRatio < 0.995 && sale.saleRatio > 0.95, `satış oranı ${sale.saleRatio}`);
+  assert.ok(Math.abs(sale.weeklyDrift - 0.01) < 0.004, `haftalık kayma ${sale.weeklyDrift}`);
+  assert.ok(db.market.sale, 'piyasa özetinde satış sinyali');
+});
+
+test('teklif önerisi: ucuz ilanda ilan fiyatından küçük pay, pahalıda piyasa seviyesi; uzun bekleyende pay artar', () => {
+  const cheap = suggestOffer({ price: 2800000, expected: 3000000, low: 2850000, daysOn: 5, drops: 0, saleRatio: 0.98 });
+  assert.equal(cheap.basis, 'ilan');
+  assert.equal(cheap.offer, 2740000); // %2 pay
+  const pricey = suggestOffer({ price: 3300000, expected: 3000000, low: 2850000, daysOn: 5, drops: 0, saleRatio: 0.98 });
+  assert.equal(pricey.basis, 'piyasa');
+  assert.equal(pricey.offer, 2940000);
+  const stale = suggestOffer({ price: 2800000, expected: 3000000, low: 2850000, daysOn: 70, drops: 2, saleRatio: 0.98 });
+  assert.ok(stale.offer < cheap.offer && stale.nego > 0.04);
+  // Asla ilan fiyatının %15'inden fazla aşağısı önerilmez
+  assert.equal(suggestOffer({ price: 4000000, expected: 3000000, low: 2850000, daysOn: 1, drops: 0 }).offer, 3400000);
+  const db = market([{ key: 'sahibinden:81', sourceId: '81', modelRaw: 'Tesla Model Y Premium (Juniper)', year: 2025, km: 20000, price: 3100000 }]);
+  const a = db.listings['sahibinden:81'].a;
+  assert.ok(a.offer > 2600000 && a.offer < 3100000, `teklif ${a.offer}`);
+});
+
+test('fiyat trendi: yeni ilanların giriş fiyatı haftadan haftaya yükselirse trend pozitif', () => {
+  const now = Date.parse('2026-10-28T12:00:00Z');
+  const ls = [];
+  for (let w = 0; w < 4; w++) for (let i = 0; i < 6; i++) {
+    const pub = new Date(now - (w * 7 + 2) * 86400000).toISOString();
+    ls.push({ key: `t${w}${i}`, status: 'active', publishedAt: pub, firstSeen: pub, price: Math.round(3000000 * (1 - 0.01 * w)), priceHistory: [],
+      c: { model: 'Model Y', generation: 'Juniper', trim: 'Premium', segment: 'Model Y · Juniper · Premium' }, a: { expected: 3000000 } });
+  }
+  // İlk tam taramada görülen eski ilan (yayından çok sonra görülmüş) sayılmaz
+  ls.push({ key: 'eski', status: 'active', publishedAt: '2026-08-01T09:00:00Z', firstSeen: '2026-10-02T00:00:00Z', price: 1000000, c: ls[0].c, a: { expected: 3000000 } });
+  const t = priceTrend(ls, now)['Model Y · Juniper · Premium'];
+  assert.equal(t.days, 21);
+  assert.ok(Math.abs(t.change - 0.03) < 0.005, `değişim ${t.change}`);
+  assert.equal(t.weeks.length, 8);
+});
+
+test('mail: versiyon filtresi ve hedef fiyatlı takip', () => {
+  const l = (key, trim, generation, price, o = {}) => ({ key, status: 'active', price, km: 20000, year: 2025, c: { model: 'Model Y', generation, trim, heavy: 'yok' }, a: { label: 'Piyasa', score: 50 }, ...o });
+  const std = l('s1', 'Standart', 'Juniper', 2250000);
+  const prem = l('p1', 'Premium', 'Juniper', 3300000);
+  const legacy = l('l1', 'Standart RWD', 'Legacy', 2200000);
+  assert.ok(matchesVersion(std, 'Juniper Standart') && matchesVersion(std, 'Model Y · Juniper · Standart') && matchesVersion(std, 'juniper standart'));
+  assert.ok(!matchesVersion(legacy, 'Juniper Standart') && !matchesVersion(legacy, 'Standart'));
+  const alerts = { onlyLabels: ['Fırsat'], notifyPriceDrops: false, watches: [{ version: 'Juniper Standart', maxPrice: 2300000 }] };
+  assert.equal(watchHit(std, alerts), 'Juniper Standart, ≤ 2,30 M, hasarsız');
+  assert.equal(watchHit({ ...std, price: 2400000 }, alerts), null);
+  assert.equal(watchHit({ ...std, c: { ...std.c, heavy: 'var' } }, alerts), null, 'ağır hasarlı takipte bildirilmez');
+  const db = { listings: { s1: std, p1: prem, l1: legacy } };
+  // Genel filtre yalnızca Fırsat istese de takipteki ilan bildirilir; fiyat düşüşü genel ayar kapalıyken de gelir
+  const al = buildAlert(db, { added: ['s1', 'p1'], priceChanged: [{ key: 's1', from: 2350000, to: 2250000 }, { key: 'p1', from: 3400000, to: 3300000 }], removed: [], returned: [] }, alerts);
+  assert.deepEqual(al.added.map((x) => x.key), ['s1']);
+  assert.deepEqual(al.prices.map((x) => x.key), ['s1']);
+  assert.match(subjectOf(al), /^🚗 🎯 Juniper Standart, ≤ 2,30 M, hasarsız: Juniper Standart 2\.250\.000 TL · /);
+  // versions: yalnızca seçili versiyonlar
+  const v = buildAlert(db, { added: ['s1', 'p1', 'l1'], priceChanged: [], removed: [], returned: [] }, { versions: ['Juniper Premium'] });
+  assert.deepEqual(v.added.map((x) => x.key), ['p1']);
 });
 
 test('sahibinden ağır hasar listesi: boş veya filtresiz gelen liste kimseyi "kaydı yok" yapmaz', () => {

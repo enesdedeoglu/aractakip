@@ -116,6 +116,7 @@
       <div class="panel">
         <h2>Segment özeti</h2>
         <div class="table-wrap"><table class="seg" id="segTable"></table></div>
+        <p class="hint" id="saleInfo"></p>
         <p class="hint" id="dmgEffects"></p>
       </div>
       <div class="panel">
@@ -123,6 +124,7 @@
         <ul class="explain">
           <li><b>Beklenen fiyat:</b> Tüm aktif Tesla ilanları üzerinde model, nesil (Legacy/Juniper, Klasik/Highland), versiyon, model yılı, km ve hasar durumuna (ağır hasar, değişen, boya, tramer) göre kurulan regresyon modeli. Satıştaki versiyonların sıfır fiyatı da modele girer; az ilanlı versiyonlar ona dayanır.</li>
           <li><b>Aralık:</b> Her versiyonun tahmin hatası, ilanın kendisi dışarıda bırakılarak ölçülür. Kartta “2,25–2,45 M arası”, benzer ilanların ~%80'inin düştüğü aralıktır; az ilanlı versiyonda geniştir.</li>
+          <li><b>Teklif önerisi:</b> Gerçekçi satış seviyesi (beklenen fiyat × kısa sürede kalkan ilanlardan ölçülen satış oranı) ile ilan fiyatından pazarlık payı düşülmüş değerin küçüğü; uzun süredir ilanda olan ve fiyatı düşen ilanlarda pay artar.</li>
           <li><b>Puan (0-100):</b> Fiyatın aralıktaki yeri + tramer/boya/değişen + satıcı tipi + km/yıl + fiyat düşüşleri + ilanda kalma süresi.</li>
           <li><b>Etiketler:</b> 🔥 Fırsat (aralığın altında, versiyonu kesin, hasar kaydı yok, sıfır fiyatının altında), 👍 İyi fiyat (beklenenin altında), ⚖️ Piyasa (aralıkta), 💸 Pahalı (aralığın üstünde), ⚠️ Şüpheli (aralığın çok altında: gizli ağır hasar, yanlış versiyon ya da dolandırıcılık olabilir).</li>
           <li><b>Versiyon:</b> 2025 Juniper'de kategori “Standart” ama başlıkta cam tavan, arka ekran, premium, koltuk soğutma geçiyorsa Premium sayılır. Versiyonu yazmayan ilanlar fiyatına en uyan versiyona atanır ve kartta uyarı çıkar.</li>

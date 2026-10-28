@@ -106,7 +106,11 @@ Site ilk açılışta bu şifreyi sorar ve o cihazda "Çıkış" diyene kadar ha
 Şifresi olmayan ajan şifreli veriyi okumaz ve yazmaz. Şifreyi unutursan veriler çözülemez (ilanlar yeniden taranır, geçmiş kaybolur).
 
 ### 4) Ayarlar — `config/settings.json`
-- `alerts`: hangi ilanlar için bildirim gelsin (`models: ["Model Y"]`, `maxPrice`, `maxKm`, `minYear`, `onlyLabels: ["Fırsat","İyi fiyat"]`, `notifyPriceDrops`, `notifyRemoved`).
+- `alerts`: hangi ilanlar için bildirim gelsin (`models: ["Model Y"]`, `versions: ["Juniper Standart"]`, `maxPrice`, `maxKm`, `minYear`, `onlyLabels: ["Fırsat","İyi fiyat"]`, `notifyPriceDrops`, `notifyRemoved`).
+  `watches`: hedef fiyatlı takip, ör. `{ "version": "Juniper Standart", "maxPrice": 2300000, "maxKm": 40000, "noHeavyDamage": true }`.
+  Kurala uyan yeni ilan ya da fiyat düşüşü genel filtreden bağımsız bildirilir; mail başlığı 🎯 ile başlar.
+- `newPrices`: satıştaki versiyonların güncel sıfır fiyatları (ÖTV+KDV dahil). Fiyat modeli az ilanlı versiyonlarda bunlara
+  dayanır, kartta "sıfırın %93'ü" görünür. **Tesla zam yaptıkça güncelleyin.**
 - `agent.extension`: eklenti sekmesinin site başına açma aralıkları (dakika).
 - `cloud.sources`: bulutta taranacak kaynaklar.
 
@@ -125,15 +129,31 @@ STORE=fs npm run scan   # GitHub yerine yerel dosyaya yaz (geliştirme)
   (Premium Long Range) ve **Performance**. Legacy'de Standart RWD, Long Range AWD, Performance. Sitenin kategori alanı
   ve detaydaki çekiş/batarya bilgisi önce, başlık sonra kullanılır; yalnızca "RWD" yazan Juniper'de versiyon yıla göre
   tahmin edilir ve ilanda uyarı çıkar.
-- **Beklenen fiyat:** tüm aktif ilanlarda `log(fiyat) ~ model + nesil + versiyon + nesil×versiyon + yıl + km + ağır hasar`
-  hiyerarşik ridge regresyonu (aykırılar atılır). Az ilanlı versiyonlar üst seviyelere yaslanır; her ilanın tahmini o ilan
-  modelden çıkarılarak hesaplanır (kendi fiyatını "piyasa" göstermez). Ağır hasarlı araç ağır hasarlılarla kıyaslanır,
-  hasarsız eşdeğer fiyat ayrıca gösterilir.
+- **Versiyon düzeltmeleri:** 2025 Juniper'de kategori "Standart" ama başlıkta cam tavan, arka ekran, premium, koltuk soğutma,
+  tavan perdesi geçiyorsa araç eski tam donanımlı arkadan itiştir (Premium). "Standart menzil / Standart Range / SR" iki anlamda
+  kullanıldığı için Premium varsayılır ve fiyatla teyit edilir. Versiyonu yazmayan ilanlar fiyatına en uyan versiyona atanır,
+  kartta uyarı çıkar. 2024 ve öncesi Model Y her zaman Legacy; 2026 "Premium" arkadan itiş Premium Long Range RWD'dir.
+- **Beklenen fiyat:** tüm aktif ilanlarda `log(fiyat) ~ model + nesil + versiyon + nesil×versiyon + versiyon×yıl + yıl + km +
+  ağır hasar + değişen + boya + tramer` hiyerarşik ridge regresyonu (aykırılar atılır). Satıştaki versiyonların sıfır fiyatı
+  (`newPrices`) modele sıfıra yakın ilan olarak girer. Az ilanlı versiyonlar üst seviyelere ve sıfır fiyatına yaslanır; her
+  ilanın tahmini o ilan modelden çıkarılarak hesaplanır (kendi fiyatını "piyasa" göstermez).
+- **Aralık:** her versiyonun tipik hatası bu leave-one-out tahminlerinden ölçülür. Kartta "beklenen ≈ 2,35 M (2,25–2,45 M
+  arası)": benzer ilanların ~%80'i bu aralıktadır; az ilanlı versiyonda ve ağır hasarlıda geniştir.
+- **Hasar durumuna göre fiyat:** ağır hasar, değişen/boyalı parça sayısı ve tramer tutarının etkisi ilanlardan öğrenilir
+  (Ekim 2026: ağır hasar ≈ −%24, değişen parça başına ≈ −%3, boyalı parça ≈ −%1, 100 bin TL tramer ≈ −%2,4). Hasarlı aracın
+  beklenen fiyatı buna göre düşürülür, hasarsız eşdeğeri ayrıca gösterilir.
 - **Ağır hasar:** arabam detayı (Ağır Hasarlı: Evet/Hayır), sahibinden "Ağır Hasar Kayıtlı" filtreli liste ve ilan metni
   ("ağır hasar", "pert", "çekme belgeli"; Türkçe karaktersiz yazımlar dahil, "ağır hasar kaydı yok" gibi olumsuzlar hariç).
-  Aynı aracın bir sitesinde ağır hasar yazıyorsa diğer sitedeki "yok" bilgisi bunu ezmez.
-- **Puan (0–100):** fiyat sapması + tramer/boya/değişen/ağır hasar + satıcı tipi + km/yıl + fiyat düşüşleri + ilanda kalma süresi.
-- **Etiketler:** 🔥 Fırsat · 👍 İyi fiyat · ⚖️ Piyasa · 💸 Pahalı · ⚠️ Şüpheli (piyasanın %25+ altında, bireysel) · Veri az.
-  Ağır hasarlı araç "Fırsat" etiketi almaz.
+  Aynı aracın bir sitesinde (kalkmış olsa da) ya da önceki ilanında ağır hasar yazıyorsa diğer ilandaki "yok" bilgisi bunu
+  ezmez. Tramer aracın değerinin dörtte birini geçiyorsa uyarı çıkar.
+- **Satış sinyali ve teklif:** kısa sürede (≤21 gün) kalkan ilanlar büyük ihtimalle satıldı; fiyatları kalkış zamanına göre
+  düzeltilerek gerçekçi satış oranı (≈ ilan fiyatının %98'i) ve piyasanın aylık kayması ölçülür. Kartta "önerilen teklif",
+  bu satış seviyesiyle ilan fiyatından pazarlık payı (ilanda kalma süresi ve fiyat düşüşleriyle artar) düşülmüş değerin küçüğüdür.
+- **Trend:** piyasa sekmesinde her versiyonun son 3-4 haftadaki fiyat seviyesi değişimi (yalnızca yeni yayına giren ilanların
+  giriş fiyatı, yıl/km/hasara göre düzeltilmiş).
+- **Puan (0–100):** fiyatın aralıktaki yeri + tramer/boya/değişen/ağır hasar + satıcı tipi + km/yıl + fiyat düşüşleri + ilanda kalma süresi.
+- **Etiketler:** 🔥 Fırsat (aralığın altında; versiyon kesin, ağır hasarsız, sıfır fiyatının altında) · 👍 İyi fiyat ·
+  ⚖️ Piyasa (aralıkta) · 💸 Pahalı (aralığın üstünde) · ⚠️ Şüpheli (aralığın çok altında: gizli ağır hasar, yanlış versiyon,
+  hatalı fiyat ya da dolandırıcılık olabilir) · Veri az.
 
 Tahminler istatistikseldir; almadan önce ekspertiz ve batarya SOH testi yaptırın.

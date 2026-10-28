@@ -35,6 +35,10 @@ const DEFAULTS = {
     notifyRemoved: false,
     onlyLabels: [],
     excludeHeavyDamage: true, // ağır hasar kayıtlı ilanlar için mail gönderme
+    versions: [], // yalnızca bu versiyonlar, ör. ["Juniper Standart", "Juniper Premium"]
+    // Takip: kurala uyan ilan genel filtreden bağımsız (ve mail başlığında 🎯 ile) bildirilir, ör.
+    // { "version": "Juniper Standart", "maxPrice": 2300000, "maxKm": 40000, "noHeavyDamage": true }
+    watches: [],
   },
 };
 

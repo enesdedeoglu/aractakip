@@ -298,12 +298,98 @@ export function pctOf(n) {
   return `%${v}${ek}`;
 }
 
+/**
+ * Kalkan ilanlardan satış sinyali. İlan fiyatı satış fiyatı değildir; kısa sürede (≤21 gün) kalkan ve yeniden
+ * ilana konmayan araçlar büyük ihtimalle satıldı. Bunların fiyatının bugünkü modele göre sapması, kalkış
+ * zamanına göre doğruyla ayrıştırılır: sapma ≈ a + b·hafta. a: bugün satılanların ilan seviyesine göre konumu,
+ * b: haftalık piyasa kayması (eski ilanlar daha ucuzsa piyasa yükseliyor).
+ * @returns { n, saleRatio, weeklyDrift, monthlyDrift } veya null (yetersiz veri)
+ */
+export function saleSignal(listings, market, now = Date.now()) {
+  if (!market) return null;
+  const relisted = new Set(listings.map((l) => l.relistOf).filter(Boolean));
+  const pts = [];
+  const active = [];
+  for (const l of listings) {
+    if (!l.c || l.c.model === 'Diğer' || !l.price || !l.year || isHeavy(l) || (l.dup && !l.dup.primary)) continue;
+    const dev = Math.log(l.price / predict(l, market).expected);
+    if (Math.abs(dev) > 0.2) continue;
+    if (l.status === 'active') { active.push(dev); continue; }
+    const start = Date.parse(l.publishedAt || l.firstSeen), end = Date.parse(l.removedAt);
+    if (!Number.isFinite(end) || relisted.has(l.key) || end - start > 21 * DAY || now - end > 60 * DAY) continue;
+    pts.push([(now - end) / (7 * DAY), dev]);
+  }
+  if (pts.length < 30 || active.length < 30) return null;
+  // Basit en küçük kareler (aykırılar yukarıda atıldı)
+  const n = pts.length;
+  const mx = pts.reduce((a, [x]) => a + x, 0) / n, my = pts.reduce((a, [, y]) => a + y, 0) / n;
+  const sxx = pts.reduce((a, [x]) => a + (x - mx) ** 2, 0);
+  const b = sxx > 0.5 ? pts.reduce((a, [x, y]) => a + (x - mx) * (y - my), 0) / sxx : 0;
+  const a = my - b * mx;
+  const level = median(active);
+  const r3 = (x) => Math.round(x * 1000) / 1000;
+  return { n, saleRatio: r3(Math.exp(a - level)), weeklyDrift: r3(-b), monthlyDrift: r3(Math.exp(-b * 30 / 7) - 1) };
+}
+
+/**
+ * Teklif önerisi: gerçekçi satış seviyesi (beklenen × satış oranı) ile ilan fiyatından pazarlık payı düşülmüş
+ * değerin küçüğü. Pazarlık payı ilanda kalma süresi ve fiyat düşüşleriyle artar.
+ */
+export function suggestOffer({ price, expected, low, daysOn, drops, saleRatio = 0.985 }) {
+  if (!price || !expected) return null;
+  const nego = 0.02 + (daysOn > 30 ? 0.01 : 0) + (daysOn > 60 ? 0.01 : 0) + (drops ? 0.005 : 0);
+  const fromAsk = price * (1 - nego);
+  const fromMarket = Math.max(expected * saleRatio, low ?? 0);
+  const offer = Math.max(price * 0.85, Math.min(fromAsk, fromMarket));
+  return { offer: Math.round(offer / 10000) * 10000, nego, basis: fromAsk <= fromMarket ? 'ilan' : 'piyasa' };
+}
+
+/**
+ * Versiyon bazında fiyat trendi: her hafta yayına giren ilanların giriş fiyatının bugünkü beklenen fiyatına
+ * oranının medyanı. Yıl/km/hasar farkı beklenen fiyatla ayıklanır; yalnızca yeni ilanlara bakıldığı için
+ * ucuzların hızla satılıp pahalıların kalmasından doğan yanılgı oluşmaz.
+ * @returns { [segment]: { weeks: [{ w, n, idx }] (eskiden yeniye), change, days } }
+ */
+export function priceTrend(listings, now = Date.now(), weeks = 8) {
+  const add = (map, key, k, v) => {
+    if (!map.has(key)) map.set(key, Array.from({ length: weeks }, () => []));
+    map.get(key)[k].push(v);
+  };
+  const segs = new Map();
+  for (const l of listings) {
+    if (!l.a?.expected || !l.c || isHeavy(l) || (l.dup && !l.dup.primary) || !l.publishedAt) continue;
+    const pub = Date.parse(l.publishedAt);
+    // Giriş fiyatı ancak ilan yayından hemen sonra görüldüyse bilinir (ilk tam taramadaki eski ilanlar hariç)
+    if (!(Date.parse(l.firstSeen) - pub <= 2 * DAY)) continue;
+    const k = Math.floor((now - pub) / (7 * DAY));
+    if (k < 0 || k >= weeks) continue;
+    const v = Math.log((l.priceHistory?.[0]?.p || l.price) / l.a.expected);
+    add(segs, l.c.segment, k, v);
+    add(segs, `${l.c.model} · Tümü`, k, v);
+  }
+  const out = {};
+  for (const [seg, byWeek] of segs) {
+    const pts = byWeek.map((a, k) => ({ w: k, n: a.length, idx: a.length >= 3 ? Math.round(median(a) * 1000) / 1000 : null }));
+    // Bu hafta ile en fazla 4 hafta önceki (yeterli ilanı olan) en eski hafta karşılaştırılır
+    let old = null;
+    for (let k = 2; k <= 4; k++) if (pts[k]?.n >= 5) old = pts[k];
+    const cur = pts[0].n >= 5 ? pts[0] : pts[1]?.n >= 5 ? pts[1] : null;
+    out[seg] = {
+      weeks: [...pts].reverse(),
+      change: cur && old && old.w > cur.w ? Math.round((Math.exp(cur.idx - old.idx) - 1) * 1000) / 1000 : null,
+      days: cur && old ? (old.w - cur.w) * 7 : null,
+    };
+  }
+  return out;
+}
+
 /** "2,25–2,45 M" */
 export const fmtRange = (lo, hi) => `${lo >= 1e6 && hi >= 1e6 ? fmtM(lo).replace(' M', '') : fmtM(lo)}–${fmtM(hi)}`;
 
 const round = (n, step = 1000) => (n == null ? null : Math.round(n / step) * step);
 
-export function analyzeListing(l, market, all) {
+/** @param ctx.sale saleSignal sonucu (teklif önerisi için) */
+export function analyzeListing(l, market, all, { sale = null } = {}) {
   const now = Date.now();
   const reasons = [];   // olumlu
   const cautions = [];  // dikkat
@@ -442,6 +528,11 @@ export function analyzeListing(l, market, all) {
   }
   if (newRatio) (newRatio >= 0.97 ? cautions : reasons).push(`Sıfırının ${pctOf(newRatio * 100)} (sıfır ${fmtM(newPrice)}${newRatio >= 0.97 ? ' – sıfırı teslimat beklemeli bu fiyata alınabilir' : ''})`);
 
+  // Teklif önerisi (aktif, değerlendirilebilir ilanlar)
+  const offer = l.status === 'active' && pred && label !== 'Veri az' && label !== 'Şüpheli'
+    ? suggestOffer({ price: l.price, expected, low: pred.low, daysOn, drops: drops.length, saleRatio: sale?.saleRatio })
+    : null;
+
   let advice;
   if (heavy && label !== 'Veri az' && label !== 'Şüpheli') advice = `Ağır hasar kayıtlı: ${label === 'İyi fiyat' ? 'ağır hasarlı araçlara göre uygun' : label === 'Piyasa' ? 'ağır hasarlı araç piyasasında' : 'ağır hasarlı araçlara göre bile pahalı'}. Detaylı ekspertiz şart; tekrar satışta değer kaybı yüksektir.`;
   else if (label === 'Veri az') advice = 'Piyasada az örnek var; tahmin güvenilir değil. Yurt dışı ve sıfır fiyatlarıyla da kıyaslayın.';
@@ -472,11 +563,13 @@ export function analyzeListing(l, market, all) {
     segmentCount: market ? Math.max(0, segOthers) : 0,
     confidence: comps.length >= 5 && segOthers >= 5 && sureTrim ? 'yüksek' : comps.length >= 2 ? 'orta' : 'düşük',
     daysOnMarket: daysOn,
+    offer: offer?.offer,
+    offerBasis: offer?.basis,
   };
 }
 
 /** Segment bazında piyasa özeti (model verilirse versiyonun tipik hatası ve sıfır fiyatıyla) */
-export function marketSummary(listings, market = null) {
+export function marketSummary(listings, market = null, { sale = null, all = listings } = {}) {
   const active = listings.filter((l) => l.status === 'active' && l.price);
   const groups = new Map();
   for (const l of active) {
@@ -485,6 +578,7 @@ export function marketSummary(listings, market = null) {
     groups.get(key).push(l);
   }
   const now = Date.now();
+  const trends = market ? priceTrend(all, now) : {};
   const segments = [...groups.entries()].map(([key, ls]) => {
     const [model, generation, trim] = key.split('|');
     const seg = `${model} · ${generation} · ${trim}`;
@@ -505,10 +599,12 @@ export function marketSummary(listings, market = null) {
       // Tipik hata: ilanların yarısının tahminden sapması bundan az (σ × 0,674)
       typicalError: sigma ? Math.round(sigma * 0.6745 * 1000) / 1000 : undefined,
       newPrice: market?.newPrices?.[seg],
+      trend: trends[seg],
     };
   }).sort((a, b) => b.count - a.count);
   const removed30 = listings.filter((l) => l.status === 'removed' && now - Date.parse(l.removedAt) < 30 * DAY);
   const r3 = (x) => Math.round(x * 1000) / 1000;
   const damageEffects = market ? Object.fromEntries(Object.entries(market.damageEffects).map(([k, v]) => [k, r3(v)])) : undefined;
-  return { segments, removed30d: removed30.length, activeCount: active.length, damageEffects, typicalError: market ? r3(market.sigmaAll * 0.6745) : undefined };
+  const modelTrends = Object.fromEntries(Object.entries(trends).filter(([k]) => k.endsWith(' · Tümü')).map(([k, v]) => [k.replace(' · Tümü', ''), v]));
+  return { segments, removed30d: removed30.length, activeCount: active.length, damageEffects, typicalError: market ? r3(market.sigmaAll * 0.6745) : undefined, sale: sale || undefined, trends: modelTrends };
 }

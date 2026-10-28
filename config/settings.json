@@ -18,7 +18,11 @@
     "notifyPriceDrops": true,
     "notifyRemoved": false,
     "onlyLabels": [],
-    "excludeHeavyDamage": true
+    "excludeHeavyDamage": true,
+    "versions": [],
+    "watches": [
+      { "version": "Juniper Standart", "maxPrice": 2300000, "noHeavyDamage": true }
+    ]
   },
   "newPrices": {
     "_not": "Tesla Türkiye sıfır fiyatları (ÖTV+KDV dahil, TL). Zam gelince güncelleyin; anahtar kartlardaki versiyon adıdır.",

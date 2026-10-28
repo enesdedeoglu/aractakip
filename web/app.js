@@ -374,6 +374,26 @@
     return `<div class="expected">${parts.join(' · ')}</div>`;
   }
 
+  // "Önerilen teklif ≈ 2,28 M (ilan fiyatının %4 altı)"
+  function offerLine(l, a) {
+    if (!a.offer || l.status !== 'active') return '';
+    const d = a.offer / l.price - 1;
+    const why = a.offerBasis === 'piyasa'
+      ? 'Gerçekçi satış seviyesi: beklenen fiyat × kısa sürede kalkan ilanlardan ölçülen satış oranı'
+      : 'İlan fiyatından pazarlık payı (ilanda kalma süresi ve fiyat düşüşleriyle artar)';
+    return `<div class="offer" title="${esc(why)}">Önerilen teklif ≈ <b>${tlShort(a.offer)}</b>${d < -0.005 ? ` <small>(ilan fiyatının %${Math.round(-d * 100)} altı)</small>` : ''}</div>`;
+  }
+
+  // Haftalık fiyat endeksi için küçük çizgi (eskiden yeniye)
+  function trendSpark(weeks) {
+    const pts = (weeks || []).filter((w) => w.idx != null);
+    if (pts.length < 2) return '';
+    const ys = pts.map((w) => w.idx), lo = Math.min(...ys), hi = Math.max(...ys), span = hi - lo || 0.01;
+    const xy = pts.map((w, i) => `${(i / (pts.length - 1)) * 40},${12 - ((w.idx - lo) / span) * 10}`).join(' ');
+    return `<svg class="tspark" viewBox="-1 0 42 14" aria-hidden="true"><polyline fill="none" stroke="currentColor" stroke-width="1.5" points="${xy}"/></svg>`;
+  }
+  const trendTxt = (t) => (t?.change == null ? '—' : `<span class="${t.change > 0.005 ? 'chg-up' : t.change < -0.005 ? 'chg-down' : ''}" title="Son ${t.days} günde yayına giren ilanların, yıl/km/hasara göre düzeltilmiş fiyat seviyesi">${trendSpark(t.weeks)} ${pctSigned(t.change)} <small>(${t.days} g)</small></span>`);
+
   function card(l) {
     const a = l.a || {};
     const dev = a.deviation;
@@ -417,6 +437,7 @@
         <div class="subtitle" title="${esc(l.title)}">${esc(l.title)}</div>
         <div class="price-row"><span class="price">${tl(l.price)}</span>${devTxt}</div>
         ${expectedLine(a)}
+        ${offerLine(l, a)}
         <div class="meta">${meta}</div>
         ${otherHtml}
         <div class="advice">${esc(a.advice || '')}</div>
@@ -468,8 +489,13 @@
     }
 
     const segs = state.db.market?.segments || [];
-    $('#segTable').innerHTML = `<thead><tr><th>Model</th><th>Nesil</th><th>Versiyon</th><th class="num">İlan</th><th class="num">Medyan fiyat</th><th class="num">En düşük</th><th class="num">Sıfır</th><th class="num" title="Tahminin tipik sapması: ilanların yarısı bundan az sapıyor">Tipik hata</th><th class="num">Medyan km</th><th>Yıllar</th><th class="num">7 günde yeni</th></tr></thead>
-      <tbody>${segs.map((s) => `<tr><td>${esc(s.model)}</td><td>${esc(s.generation)}</td><td>${esc(s.trim)}</td><td class="num">${s.count}</td><td class="num">${tl(s.medianPrice)}</td><td class="num">${tl(s.minPrice)}</td><td class="num">${s.newPrice ? tlShort(s.newPrice) : '—'}</td><td class="num">${s.typicalError ? `±%${(s.typicalError * 100).toLocaleString('tr-TR', { maximumFractionDigits: 1 })}` : '—'}</td><td class="num">${s.medianKm != null ? Math.round(s.medianKm).toLocaleString('tr-TR') : '—'}</td><td>${s.years ? (s.years[0] === s.years[1] ? s.years[0] : `${s.years[0]}–${s.years[1]}`) : '—'}</td><td class="num">${s.new7d}</td></tr>`).join('')}</tbody>`;
+    $('#segTable').innerHTML = `<thead><tr><th>Model</th><th>Nesil</th><th>Versiyon</th><th class="num">İlan</th><th class="num">Medyan fiyat</th><th class="num">En düşük</th><th class="num">Sıfır</th><th class="num" title="Tahminin tipik sapması: ilanların yarısı bundan az sapıyor">Tipik hata</th><th class="num">Fiyat trendi</th><th class="num">Medyan km</th><th>Yıllar</th><th class="num">7 günde yeni</th></tr></thead>
+      <tbody>${segs.map((s) => `<tr><td>${esc(s.model)}</td><td>${esc(s.generation)}</td><td>${esc(s.trim)}</td><td class="num">${s.count}</td><td class="num">${tl(s.medianPrice)}</td><td class="num">${tl(s.minPrice)}</td><td class="num">${s.newPrice ? tlShort(s.newPrice) : '—'}</td><td class="num">${s.typicalError ? `±%${(s.typicalError * 100).toLocaleString('tr-TR', { maximumFractionDigits: 1 })}` : '—'}</td><td class="num">${trendTxt(s.trend)}</td><td class="num">${s.medianKm != null ? Math.round(s.medianKm).toLocaleString('tr-TR') : '—'}</td><td>${s.years ? (s.years[0] === s.years[1] ? s.years[0] : `${s.years[0]}–${s.years[1]}`) : '—'}</td><td class="num">${s.new7d}</td></tr>`).join('')}</tbody>`;
+    const sale = state.db.market?.sale, mt = state.db.market?.trends || {};
+    $('#saleInfo').innerHTML = [
+      sale ? `<b>Satış sinyali:</b> kısa sürede (≤21 gün) kalkan, büyük ihtimalle satılan ${sale.n} ilan, güncel ilanlardan %${Math.abs((sale.saleRatio - 1) * 100).toLocaleString('tr-TR', { maximumFractionDigits: 1 })} ${sale.saleRatio < 1 ? 'ucuza' : 'pahalıya'} fiyatlanmıştı → gerçekçi satış ≈ ilan fiyatının ${pctOf(sale.saleRatio * 100)}. Kalkış zamanına göre piyasa ayda ~%${Math.abs(Math.round(sale.monthlyDrift * 100))} ${sale.monthlyDrift >= 0 ? 'yükseliyor (enflasyon + sıfır fiyatı zamları)' : 'düşüyor'}.` : '',
+      ...Object.entries(mt).filter(([, t]) => t.change != null).map(([m, t]) => `<b>${esc(m)}</b> genel fiyat seviyesi son ${t.days} günde ${pctSigned(t.change)}.`),
+    ].filter(Boolean).join(' ');
     const de = state.db.market?.damageEffects;
     $('#dmgEffects').innerHTML = de ? `<b>Hasarın fiyata etkisi</b> (ilanlardan öğrenilen): ağır hasar kaydı ${pctSigned(de.heavy, 0)} · değişen parça başına ${pctSigned(de.changed)} · boyalı parça başına ${pctSigned(de.painted)} · 100 bin TL tramer ${pctSigned(de.tramer100k)}. Tahminin genel tipik hatası ±%${((state.db.market.typicalError || 0) * 100).toLocaleString('tr-TR', { maximumFractionDigits: 1 })}.` : '';
   }

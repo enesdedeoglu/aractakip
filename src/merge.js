@@ -1,6 +1,6 @@
 // Tarama sonuçlarını veritabanına işler; yeni / fiyat değişimi / kalkan ilanları tespit eder.
 import { classify } from './classify.js';
-import { buildMarket, analyzeListing, marketSummary, resolveTrims } from './analyze.js';
+import { buildMarket, analyzeListing, marketSummary, resolveTrims, saleSignal } from './analyze.js';
 import { findDuplicates, groupView, findRelists, heavyHistory } from './dedupe.js';
 import { loadSettings } from './settings.js';
 
@@ -179,8 +179,10 @@ export function recompute(db, { newPrices = loadSettings().newPrices } = {}) {
   let market = buildMarket(unique.filter((l) => !l.c.trimAlt), opts);
   if (resolveTrims(all, market) || all.some((l) => l.c.trimAlt)) buildViews();
   market = buildMarket(unique, opts);
-  for (const l of all) l.a = analyzeListing(views.get(l.key), market, unique);
-  db.market = marketSummary(unique, market);
+  // Kısa sürede kalkan ilanlardan gerçekçi satış seviyesi ve piyasa kayması (teklif önerisinde kullanılır)
+  const sale = saleSignal(all, market);
+  for (const l of all) l.a = analyzeListing(views.get(l.key), market, unique, { sale });
+  db.market = marketSummary(unique, market, { sale, all });
   db.model = market ? { n: market.n, at: new Date().toISOString() } : null;
 }
 
