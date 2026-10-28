@@ -53,7 +53,9 @@ const RE = {
   stdRange: /standar[dt]?\s*(menzil|range)|\bsr\+?\b/,
   // Kasım 2025'te gelen sade Standart'ta olmayan donanımlar: başlıkta geçiyorsa araç eski tam donanımlı
   // arkadan itiştir (Premium). "Soğutma" ilanlarda koltuk havalandırması anlamında kullanılıyor.
-  premiumKit: /premium|c(am)?\.?\s*tavan|panoramik|tavan\s*perde|arka\s*ekran|koltuk\s*sogutma|sogutma|havalandirmali|15\s*hoparlor/,
+  premiumKit: /premium|c(am)?\.?\s*tavan|cam\s*tvn|panoramik|tavan\s*perde|arka\s*ekran|koltuk\s*sogutma|sogutma|havalandirmali|15\s*hoparlor|(4|dort)\s*k(o)?lt?k\s*isitma|arka\s*koltuk\s*isitma/,
+  // 2026'da trafiğe çıkmış 2025 model arkadan itiş: eski Premium Kasım 2025'te kalktığı için Standart
+  reg2026: /2026.{0,25}?(cikis|trafi)/,
 };
 
 /**
@@ -173,14 +175,19 @@ export function classify(l) {
   if (trim === 'Belirsiz') ({ trim, guessed } = trimOf(model, text, ctx));
   const title = fold(l.title);
   let trimAlt;
-  if (model === 'Model Y' && generation === 'Juniper' && (l.year ?? 0) <= 2025 && trim === 'Standart') {
+  const catPremium = RE.premium.test(fold(structured));
+  if (model === 'Model Y' && generation === 'Juniper' && (l.year ?? 0) <= 2025 && (trim === 'Standart' || (trim === 'Premium' && !catPremium))) {
     // Satıcılar 2025'in tam donanımlı arkadan itişlilerini sık sık "Standart" kategorisine koyuyor
-    if (RE.premiumKit.test(title) || RE.stdRange.test(title)) trim = 'Premium';
+    if (RE.premiumKit.test(title)) ({ trim, guessed } = { trim: 'Premium', guessed: false });
+    else if (RE.reg2026.test(title)) ({ trim, guessed } = { trim: 'Standart', guessed: false });
+    // "Standart menzil / range / SR" çoğunlukla eski Premium'u anlatıyor ama gerçek Standart'a da yazılıyor
+    // (Ekim 2026: 2,3–2,9 M ve 3,2–3,4 M olmak üzere iki küme): Premium varsayılır, fiyat teyit eder
+    else if (RE.stdRange.test(title)) ({ trim, guessed, trimAlt } = { trim: 'Premium', guessed: false, trimAlt: ['Premium', 'Standart'] });
+    else if (RE.std.test(title)) ({ trim, guessed } = { trim: 'Standart', guessed: false });
     // Başlık versiyon söylemiyorsa kategori şüpheli: fiyat modeli iki versiyondan uyanı seçer (analyze.resolveTrims)
-    else if (!RE.std.test(title)) trimAlt = ['Standart', 'Premium'];
-  }
-  if (model === 'Model Y' && generation === 'Juniper' && guessed) {
-    trimAlt = (l.year ?? 0) >= 2026 ? ['Standart', 'Long Range RWD'] : ['Premium', 'Standart'];
+    else trimAlt = guessed ? ['Premium', 'Standart'] : ['Standart', 'Premium'];
+  } else if (model === 'Model Y' && generation === 'Juniper' && guessed) {
+    trimAlt = ['Standart', 'Long Range RWD'];
   }
   const { tags, warnings } = detectTags(`${l.title || ''} ${l.description || ''}`);
   if (l.damage?.original) {

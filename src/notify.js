@@ -5,6 +5,7 @@
 //   SITE_URL: web arayüzünün adresi (e-postadaki bağlantı için)
 import { execFile, spawn } from 'node:child_process';
 import { log } from './util.js';
+import { fmtRange, pctOf } from './analyze.js';
 
 const SOURCE_NAMES = { arabam: 'arabam.com', sahibinden: 'sahibinden', otokoc: 'Otokoç 2. El', borusan: 'Borusan Next' };
 const LABEL_EMOJI = { 'Fırsat': '🔥', 'İyi fiyat': '👍', 'Piyasa': '⚖️', 'Pahalı': '💸', 'Şüpheli': '⚠️' };
@@ -83,7 +84,7 @@ function card(l, extra = '', db = null) {
         <div style="margin:4px 0;font-size:18px;font-weight:bold">${tl(l.price)} ${extra}</div>
         <div style="color:#555">${[l.km != null ? l.km.toLocaleString('tr-TR') + ' km' : 'km ?', l.city, SOURCE_NAMES[l.source], l.sellerType].filter(Boolean).map(esc).join(' · ')}</div>
         <div style="margin-top:6px"><span style="background:${color};color:#fff;border-radius:10px;padding:2px 8px;font-size:12px">${esc(a.label)} · ${a.score}/100</span>
-        ${a.expected ? `<span style="color:#555;font-size:12px"> beklenen ≈ ${tl(a.expected)} (${a.deviation > 0 ? '+' : ''}${(a.deviation * 100).toFixed(1)}%)</span>` : ''}</div>
+        ${a.expected ? `<span style="color:#555;font-size:12px"> beklenen ≈ ${tl(a.expected)} (${a.deviation > 0 ? '+' : ''}${(a.deviation * 100).toFixed(1)}%)${a.expectedLow ? ` · olağan aralık ${fmtRange(a.expectedLow, a.expectedHigh)}` : ''}${a.newRatio ? ` · sıfırın ${pctOf(a.newRatio * 100)}` : ''}</span>` : ''}</div>
         <div style="margin-top:6px;color:#333">${esc(a.advice)}</div>
         ${(a.cautions || []).length ? `<div style="margin-top:4px;color:#b35900;font-size:12px">⚠ ${a.cautions.map(esc).join('<br>⚠ ')}</div>` : ''}
         ${(a.reasons || []).length ? `<div style="margin-top:4px;color:#0a7d32;font-size:12px">✓ ${a.reasons.slice(0, 4).map(esc).join('<br>✓ ')}</div>` : ''}

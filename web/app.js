@@ -23,6 +23,11 @@
   const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const tl = (n) => (n == null ? '—' : `${Math.round(n).toLocaleString('tr-TR')} TL`);
   const tlShort = (n) => (n == null ? '—' : n >= 1e6 ? `${(n / 1e6).toLocaleString('tr-TR', { maximumFractionDigits: 2 })} M` : `${Math.round(n / 1000)} bin`);
+  // "%93'ü", "%110'u": sayının okunuşuna göre iyelik eki (src/analyze.js pctOf ile aynı)
+  const ONES = ['', "'i", "'si", "'ü", "'ü", "'i", "'sı", "'si", "'i", "'u"];
+  const TENS = ['', "'u", "'si", "'u", "'ı", "'si", "'ı", "'i", "'i", "'ı"];
+  const pctOf = (n) => { const v = Math.round(n); return `%${v}${v === 0 ? "'ı" : v % 10 ? ONES[v % 10] : v % 100 ? TENS[(v / 10) % 10] : v % 1000 ? "'ü" : "'i"}`; };
+  const pctSigned = (x, digits = 1) => `${x > 0 ? '+' : x < 0 ? '−' : ''}%${Math.abs(x * 100).toLocaleString('tr-TR', { maximumFractionDigits: digits })}`;
   const kmFmt = (n) => (n == null ? 'km ?' : `${n.toLocaleString('tr-TR')} km`);
   const ago = (iso) => {
     if (!iso) return '—';
@@ -355,6 +360,20 @@
     return `<div class="spark"><svg viewBox="0 0 90 24"><polyline fill="none" stroke="${color}" stroke-width="2" points="${pts}"/></svg>${hist.length - 1} değişim · ${pct > 0 ? '+' : ''}${pct.toFixed(1)}%</div>`;
   }
 
+  // "Beklenen ≈ 2,35 M (2,25–2,45 M arası) · sıfırın %93'ü · hasarsız ≈ 2,6 M · benzer 12 ilan medyanı 2,4 M"
+  function expectedLine(a) {
+    if (!a.expected || a.label === 'Veri az') return '';
+    const lowTxt = a.expectedLow >= 1e6 && a.expectedHigh >= 1e6 ? tlShort(a.expectedLow).replace(' M', '') : tlShort(a.expectedLow);
+    const range = a.expectedLow ? ` <span class="range" title="Benzer ilanların ~%80'i bu aralıkta (bu versiyonda tahminin tipik sapması ±%${((a.sigma || 0) * 67.45).toLocaleString('tr-TR', { maximumFractionDigits: 1 })})">(${lowTxt}–${tlShort(a.expectedHigh)} arası)</span>` : '';
+    const parts = [
+      `Beklenen ≈ <b>${tlShort(a.expected)}</b>${range}`,
+      a.newRatio ? `<span title="Güncel sıfır fiyatı ${tl(a.newPrice)}">sıfırın ${pctOf(a.newRatio * 100)}</span>` : null,
+      a.expectedClean ? `hasarsız ≈ ${tlShort(a.expectedClean)}${a.damageDiscount ? ` (hasar ${pctSigned(a.damageDiscount, 0)})` : ''}` : null,
+      a.compMedian ? `benzer ${a.comps} ilan medyanı ${tlShort(a.compMedian)}` : null,
+    ].filter(Boolean);
+    return `<div class="expected">${parts.join(' · ')}</div>`;
+  }
+
   function card(l) {
     const a = l.a || {};
     const dev = a.deviation;
@@ -397,7 +416,7 @@
         <a class="title" href="${esc(l.url)}" target="_blank" rel="noopener">${esc(l.c.model)} ${l.c.generation !== '-' ? esc(l.c.generation) : ''} · ${esc(l.c.trim)} · ${l.year || '?'}</a>
         <div class="subtitle" title="${esc(l.title)}">${esc(l.title)}</div>
         <div class="price-row"><span class="price">${tl(l.price)}</span>${devTxt}</div>
-        ${a.expected && a.label !== 'Veri az' ? `<div class="expected">Beklenen ≈ ${tl(a.expected)}${a.expectedClean ? ` (hasarsız ≈ ${tlShort(a.expectedClean)})` : ''}${a.compMedian ? ` · benzer ${a.comps} ilan medyanı ${tlShort(a.compMedian)}` : ''}</div>` : ''}
+        ${expectedLine(a)}
         <div class="meta">${meta}</div>
         ${otherHtml}
         <div class="advice">${esc(a.advice || '')}</div>
@@ -449,8 +468,10 @@
     }
 
     const segs = state.db.market?.segments || [];
-    $('#segTable').innerHTML = `<thead><tr><th>Model</th><th>Nesil</th><th>Versiyon</th><th class="num">İlan</th><th class="num">Medyan fiyat</th><th class="num">En düşük</th><th class="num">Medyan km</th><th>Yıllar</th><th class="num">7 günde yeni</th></tr></thead>
-      <tbody>${segs.map((s) => `<tr><td>${esc(s.model)}</td><td>${esc(s.generation)}</td><td>${esc(s.trim)}</td><td class="num">${s.count}</td><td class="num">${tl(s.medianPrice)}</td><td class="num">${tl(s.minPrice)}</td><td class="num">${s.medianKm != null ? Math.round(s.medianKm).toLocaleString('tr-TR') : '—'}</td><td>${s.years ? (s.years[0] === s.years[1] ? s.years[0] : `${s.years[0]}–${s.years[1]}`) : '—'}</td><td class="num">${s.new7d}</td></tr>`).join('')}</tbody>`;
+    $('#segTable').innerHTML = `<thead><tr><th>Model</th><th>Nesil</th><th>Versiyon</th><th class="num">İlan</th><th class="num">Medyan fiyat</th><th class="num">En düşük</th><th class="num">Sıfır</th><th class="num" title="Tahminin tipik sapması: ilanların yarısı bundan az sapıyor">Tipik hata</th><th class="num">Medyan km</th><th>Yıllar</th><th class="num">7 günde yeni</th></tr></thead>
+      <tbody>${segs.map((s) => `<tr><td>${esc(s.model)}</td><td>${esc(s.generation)}</td><td>${esc(s.trim)}</td><td class="num">${s.count}</td><td class="num">${tl(s.medianPrice)}</td><td class="num">${tl(s.minPrice)}</td><td class="num">${s.newPrice ? tlShort(s.newPrice) : '—'}</td><td class="num">${s.typicalError ? `±%${(s.typicalError * 100).toLocaleString('tr-TR', { maximumFractionDigits: 1 })}` : '—'}</td><td class="num">${s.medianKm != null ? Math.round(s.medianKm).toLocaleString('tr-TR') : '—'}</td><td>${s.years ? (s.years[0] === s.years[1] ? s.years[0] : `${s.years[0]}–${s.years[1]}`) : '—'}</td><td class="num">${s.new7d}</td></tr>`).join('')}</tbody>`;
+    const de = state.db.market?.damageEffects;
+    $('#dmgEffects').innerHTML = de ? `<b>Hasarın fiyata etkisi</b> (ilanlardan öğrenilen): ağır hasar kaydı ${pctSigned(de.heavy, 0)} · değişen parça başına ${pctSigned(de.changed)} · boyalı parça başına ${pctSigned(de.painted)} · 100 bin TL tramer ${pctSigned(de.tramer100k)}. Tahminin genel tipik hatası ±%${((state.db.market.typicalError || 0) * 100).toLocaleString('tr-TR', { maximumFractionDigits: 1 })}.` : '';
   }
 
   // ---------- Yeniden ilan & arşiv ----------

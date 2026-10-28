@@ -19,5 +19,13 @@
     "notifyRemoved": false,
     "onlyLabels": [],
     "excludeHeavyDamage": true
+  },
+  "newPrices": {
+    "_not": "Tesla Türkiye sıfır fiyatları (ÖTV+KDV dahil, TL). Zam gelince güncelleyin; anahtar kartlardaki versiyon adıdır.",
+    "_tarih": "2026-10",
+    "Model Y · Juniper · Standart": 2474985,
+    "Model Y · Juniper · Long Range RWD": 3906000,
+    "Model Y · Juniper · Long Range AWD": 4620000,
+    "Model Y · Juniper · Performance": 4996000
   }
 }

@@ -1,7 +1,17 @@
 // Farklı sitelerde ilanı verilen aynı aracı eşleştirir (ör. bir galerinin hem sahibinden hem arabam ilanı).
 // Aynı sitedeki ilanlar asla birleştirilmez (galeriler benzer araçları ayrı ilanlarla satıyor).
 
-const lc = (s) => (s || '').toLocaleLowerCase('tr-TR').replace(/­/g, '').trim();
+// Aynı başlık/şehir binlerce kez karşılaştırılıyor; toLocaleLowerCase yavaş olduğu için sonuçlar saklanır
+const lcCache = new Map();
+const lc = (s) => {
+  s = s || '';
+  let v = lcCache.get(s);
+  if (v === undefined) {
+    if (lcCache.size > 20000) lcCache.clear();
+    lcCache.set(s, (v = s.toLocaleLowerCase('tr-TR').replace(/­/g, '').trim()));
+  }
+  return v;
+};
 const STOP = new Set(['tesla', 'model', 'y', '3', 's', 'x', 've', 'ile', 'de', 'da', 'den', 'dan', 'satılık', 'sahibinden', 'galeriden', 'km', 'tl']);
 
 function tokens(title) {
@@ -184,4 +194,33 @@ export function findRelists(listings) {
     a.vehicleHistory = chain.flatMap((x) => (x.priceHistory || []).map((h) => ({ ...h, src: x.source, key: x.key })));
   }
   return n;
+}
+
+/**
+ * Ağır hasar geçmişi: aynı aracın başka sitedeki (kalkmış olsa da) ya da kaldırılıp yeniden konmadan önceki
+ * ilanında ağır hasar kayıtlı göründüyse, kaydı "yok" görünen aktif ilan da ağır hasarlı sayılmalı.
+ * @param heavyOf  ilanın kendi bilgisine göre ağır hasarlı mı
+ * @returns Map(aktif ilan anahtarı → ağır hasarlı görünen ilan)
+ */
+export function heavyHistory(listings, heavyOf) {
+  const out = new Map();
+  const byKey = Object.fromEntries(listings.map((l) => [l.key, l]));
+  const heavy = listings.filter((l) => l.c && l.km != null && l.price && l.year && heavyOf(l));
+  if (!heavy.length) return out;
+  const htoks = new Map(heavy.map((h) => [h.key, tokens(h.title)]));
+  for (const l of listings) {
+    if (l.status !== 'active' || !l.c || heavyOf(l)) continue;
+    // Yeniden ilan zinciri (aynı site dahil)
+    for (let r = byKey[l.relistOf], i = 0; r && i < 10; r = byKey[r.relistOf], i++) {
+      if (heavyOf(r)) { out.set(l.key, r); break; }
+    }
+    if (out.has(l.key) || l.km == null) continue;
+    const tl = tokens(l.title);
+    for (const h of heavy) {
+      if (h.key === l.key || l.dup?.members.includes(h.key)) continue;
+      const s = matchScore({ ...h, status: 'active' }, l, htoks.get(h.key), tl);
+      if (s != null && s >= THRESHOLD) { out.set(l.key, h); break; }
+    }
+  }
+  return out;
 }

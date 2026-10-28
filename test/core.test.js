@@ -42,6 +42,7 @@ test('2025 "Standart (Juniper)" kategorisindeki tam donanımlı arkadan itiş Pr
   }
   // sahibinden kategorisi ("Tesla Model Y Standart") ve "Standart Range" yazımı da
   assert.equal(trim('2025 MODEL Y STANDART RANGE 62.000KM', 2025, 'Tesla Model Y RWD'), 'Premium');
+  assert.deepEqual(classify({ modelRaw: 'Tesla Model Y RWD', title: 'STANDART RANGE', year: 2025 }).trimAlt, ['Premium', 'Standart'], 'standart menzil fiyatla teyit edilir');
   assert.equal(trim('ARKA EKRAN', 2025, 'Tesla Model Y Standart'), 'Premium');
   // Gerçek Standart: başlıkta donanım yok
   assert.equal(trim('HATASIZ BOYASIZ STANDART JUNİPER'), 'Standart');
@@ -55,6 +56,10 @@ test('versiyonu belirsiz Juniper için fiyatla seçilecek alternatifler', () => 
   const c = (o) => classify({ modelRaw: 'Tesla Model Y Standart (Juniper)', year: 2025, ...o });
   assert.deepEqual(c({ title: 'satılık 2025 model Y' }).trimAlt, ['Standart', 'Premium']);
   assert.equal(c({ title: 'TESLA STANDART JUNİPER' }).trimAlt, undefined, 'başlık Standart diyorsa kesin');
+  // 2026'da trafiğe çıkan 2025 model arkadan itiş Standart'tır; "cam tvn" kısaltması Premium
+  const g = classify({ modelRaw: 'Tesla Model Y RWD', title: 'HATASIZ 2026 4. AY ÇIKIŞLI', year: 2025 });
+  assert.deepEqual([g.trim, !!g.trimGuessed, g.trimAlt], ['Standart', false, undefined]);
+  assert.equal(classify({ modelRaw: 'Tesla Model Y RWD', title: 'CAM TVN 4KLTK ISITMA', year: 2025 }).trim, 'Premium');
   assert.deepEqual(classify({ modelRaw: 'Tesla Model Y RWD', title: 'TESLA', year: 2025 }).trimAlt, ['Premium', 'Standart']);
   assert.deepEqual(classify({ modelRaw: 'Tesla Model Y RWD', title: 'TESLA', year: 2026 }).trimAlt, ['Standart', 'Long Range RWD']);
   assert.equal(classify({ modelRaw: 'Tesla Model Y Premium (Juniper)', title: 'TESLA', year: 2025 }).trimAlt, undefined);
@@ -252,11 +257,11 @@ test('arabam: eklentinin sayfada çıkardığı küçük satırlar', () => {
   assert.match(l.image, /_580x435\.jpg$/);
 });
 
-import { buildMarket, analyzeListing } from '../src/analyze.js';
+import { buildMarket, analyzeListing, damageCounts, pctOf } from '../src/analyze.js';
 import { recompute } from '../src/merge.js';
 
 // Sentetik piyasa: rastgelelik yok, fiyatlar versiyona ve km'ye göre belirlenir
-function market(extra = []) {
+function market(extra = [], opts = { newPrices: {} }) {
   const db = emptyDb();
   let id = 1;
   const add = (n, modelRaw, year, price, o = {}) => {
@@ -274,7 +279,7 @@ function market(extra = []) {
   add(20, 'Tesla Model Y Long Range (Legacy)', 2023, 2250000);
   add(4, 'Tesla Model Y Premium (Juniper)', 2025, 2100000, { title: 'AGIR HASAR KAYITLI' });
   for (const l of extra) db.listings[l.key] = { source: 'sahibinden', status: 'active', title: 'TESLA', firstSeen: '2026-10-01T00:00:00Z', priceHistory: [], ...l };
-  recompute(db);
+  recompute(db, opts);
   return db;
 }
 
@@ -309,6 +314,103 @@ test('fiyat modeli: tek ilanlı versiyon kendi fiyatını "piyasa" göstermez', 
   const a = db.listings['sahibinden:5'].a;
   assert.ok(a.deviation < -0.3, `kendine uyan tahmin olmamalı (sapma ${a.deviation})`);
   assert.ok(a.cautions.some((c) => /az ilan var/.test(c)));
+});
+
+test('fiyat modeli: beklenen fiyat aralığı versiyonun tipik hatasına göre; az ilanlıda geniş', () => {
+  const db = market([
+    { key: 'sahibinden:21', sourceId: '21', modelRaw: 'Tesla Model Y Premium (Juniper)', year: 2025, km: 20000, price: 2950000 },
+    { key: 'sahibinden:22', sourceId: '22', modelRaw: 'Tesla Model Y Performance (Juniper)', year: 2025, km: 20000, price: 4300000 },
+  ]);
+  const dense = db.listings['sahibinden:21'].a;
+  const thin = db.listings['sahibinden:22'].a;
+  assert.ok(dense.expectedLow < dense.expected && dense.expected < dense.expectedHigh);
+  assert.ok(dense.expectedLow <= 2950000 && 2950000 <= dense.expectedHigh, 'adil fiyatlı ilan aralıkta');
+  const width = (a) => a.expectedHigh / a.expectedLow - 1;
+  assert.ok(width(thin) > 2 * width(dense), `az ilanlı versiyonda aralık daha geniş (${width(thin)} / ${width(dense)})`);
+  assert.ok(db.market.segments.find((x) => x.trim === 'Premium' && x.generation === 'Juniper').typicalError > 0);
+});
+
+test('fiyat modeli: "Fırsat" yalnızca aralığın altında; az ilanlı versiyonda aynı indirim Fırsat olmaz', () => {
+  const base = market();
+  const prem = base.listings['arabam:1'].a.expected; // yoğun versiyon (30 ilan)
+  const db = market([
+    { key: 'sahibinden:31', sourceId: '31', modelRaw: 'Tesla Model Y Premium (Juniper)', year: 2025, km: 10000, price: Math.round(prem * 0.92) },
+    { key: 'sahibinden:32', sourceId: '32', modelRaw: 'Tesla Model Y Premium (Juniper)', year: 2025, km: 10000, price: Math.round(prem * 0.985) },
+    { key: 'sahibinden:33', sourceId: '33', modelRaw: 'Tesla Model 3 Long Range', year: 2022, km: 40000, price: 1500000 },
+    { key: 'sahibinden:34', sourceId: '34', modelRaw: 'Tesla Model Y Performance (Juniper)', year: 2025, km: 10000, price: 3500000 },
+  ]);
+  const a = (k) => db.listings[k].a;
+  assert.equal(a('sahibinden:31').label, 'Fırsat', `%8 altı yoğun versiyonda aralık dışı (aralık ${a('sahibinden:31').expectedLow})`);
+  assert.ok(['Piyasa', 'İyi fiyat'].includes(a('sahibinden:32').label), 'aralık içinde Fırsat değil');
+  // Juniper Performance tek ilan: beklenen fiyat diğer versiyonlardan, aralık geniş → %8-10 indirim Fırsat sayılmaz
+  const perf = a('sahibinden:34');
+  const cheap = market([{ key: 'sahibinden:35', sourceId: '35', modelRaw: 'Tesla Model Y Performance (Juniper)', year: 2025, km: 10000, price: Math.round(perf.expected * 0.91) }]).listings['sahibinden:35'].a;
+  assert.notEqual(cheap.label, 'Fırsat', `az ilanlı versiyon (aralık ${cheap.expectedLow}–${cheap.expectedHigh})`);
+});
+
+test('fiyat modeli: sıfır fiyatı az ilanlı versiyonu taşır, kartta oran gösterilir, sıfır fiyatına Fırsat denmez', () => {
+  const newPrices = { 'Model Y · Juniper · Performance': 4996000, 'Model Y · Juniper · Standart': 2474985, _not: 'açıklama' };
+  const extra = [{ key: 'sahibinden:41', sourceId: '41', modelRaw: 'Tesla Model Y Performance (Juniper)', year: 2026, km: 3000, price: 4650000 }];
+  const without = market(extra).listings['sahibinden:41'].a;
+  const withNew = market(extra, { newPrices, year: 2026 }).listings['sahibinden:41'].a;
+  assert.ok(Math.abs(withNew.expected / 4996000 - 1) < Math.abs(without.expected / 4996000 - 1), `sıfır fiyatına yaklaşmalı (${without.expected} → ${withNew.expected})`);
+  assert.equal(withNew.newPrice, 4996000);
+  assert.equal(withNew.newRatio, Math.round((4650000 / 4996000) * 1000) / 1000);
+  assert.ok(withNew.reasons.some((r) => /Sıfırının %93'ü/.test(r)));
+  // Sıfır fiyatına satılan neredeyse sıfır Standart, tahminin altında kalsa da Fırsat değil
+  const std = market([{ key: 'sahibinden:42', sourceId: '42', modelRaw: 'Tesla Model Y Standart (Juniper)', year: 2026, km: 6000, price: 2474000 }], { newPrices, year: 2026 }).listings['sahibinden:42'].a;
+  assert.notEqual(std.label, 'Fırsat');
+});
+
+test('fiyat modeli: kategorisi şüpheli Juniper fiyatına uyan versiyona atanır', () => {
+  const db = market([
+    // "Standart" kategorisinde ama Premium fiyatında, başlıkta donanım yok
+    { key: 'sahibinden:51', sourceId: '51', modelRaw: 'Tesla Model Y Standart', title: 'satılık 2025 model Y', year: 2025, km: 20000, price: 2980000 },
+    // Kategori yalnızca RWD, Standart fiyatında
+    { key: 'sahibinden:52', sourceId: '52', modelRaw: 'Tesla Model Y RWD', title: 'TEMİZ TESLA', year: 2025, km: 20000, price: 2420000 },
+    // Başlığı Standart diyen gerçek Standart değişmez
+    { key: 'sahibinden:53', sourceId: '53', modelRaw: 'Tesla Model Y Standart', title: 'STANDART JUNIPER', year: 2025, km: 20000, price: 2420000 },
+  ]);
+  const c = (k) => db.listings[k].c;
+  assert.equal(c('sahibinden:51').trim, 'Premium');
+  assert.equal(c('sahibinden:51').trimFrom, 'Standart');
+  assert.ok(db.listings['sahibinden:51'].a.cautions.some((x) => /fiyatına ve 2025 model olmasına göre Premium varsayıldı/.test(x)));
+  assert.equal(c('sahibinden:52').trim, 'Standart');
+  assert.equal(c('sahibinden:53').trim, 'Standart');
+  assert.equal(c('sahibinden:53').trimAlt, undefined);
+});
+
+test('hasar durumuna göre fiyat: değişen/boya/tramer beklenen fiyatı düşürür, hasarsız eşdeğeri gösterilir', () => {
+  const mk = (id, damage) => ({ key: `arabam:9${id}`, sourceId: `9${id}`, modelRaw: 'Tesla Model Y Premium (Juniper)', year: 2025, km: 20000, price: 2900000, damage });
+  const db = market([mk(1, { summary: 'Tamamı orjinal', original: true, tramer: 0 }), mk(2, { summary: '3 değişen, 2 boyalı', tramer: 180000 })]);
+  const clean = db.listings['arabam:91'].a, dmg = db.listings['arabam:92'].a;
+  assert.ok(dmg.expected < clean.expected * 0.93, `hasarlı beklenen ${dmg.expected} < ${clean.expected}`);
+  assert.ok(dmg.expectedClean > dmg.expected && dmg.damageDiscount < -0.07);
+  assert.ok(dmg.reasons.some((r) => /Hasar durumu fiyata yansıtıldı \(3 değişen, 2 boyalı, tramer 180 bin\)/.test(r)));
+  assert.equal(clean.expectedClean, undefined);
+  assert.ok(db.market.damageEffects.changed < 0 && db.market.damageEffects.heavy < -0.1);
+  assert.deepEqual([93, 110, 86, 40, 100, 120, 47].map(pctOf), ["%93'ü", "%110'u", "%86'sı", "%40'ı", "%100'ü", "%120'si", "%47'si"]);
+  assert.deepEqual(damageCounts({ summary: '1 değişen, 1 boyalı, 2 lokal boyalı' }), { changed: 1, painted: 1, local: 2, paint: 2, tramer: 0 });
+});
+
+test('ağır hasar geçmişi: aynı aracın diğer sitedeki (kalkmış) ilanı ağır hasarlıysa bu ilan da sayılır', () => {
+  const car = { modelRaw: 'Tesla Model Y RWD (Legacy)', title: 'GALERİ TUNCAY TESLA MODEL Y RWD 28.000 KM CAM TAVAN', year: 2024, km: 28000, price: 1830000, city: 'Gaziantep' };
+  const db = market([
+    { ...car, key: 'arabam:801', source: 'arabam', sourceId: '801', status: 'removed', removedAt: '2026-10-17T00:00:00Z', damage: { heavy: true } },
+    { ...car, key: 'sahibinden:801', sourceId: '801', damage: { heavy: false } },
+  ]);
+  const l = db.listings['sahibinden:801'];
+  assert.equal(l.c.heavy, 'var');
+  assert.equal(l.c.heavyFrom, 'arabam (kalkmış)');
+  assert.ok(l.a.cautions.some((c) => /arabam \(kalkmış\) ilanında ağır hasar kayıtlı/.test(c)));
+  assert.ok(!l.a.cautions.some((c) => /İlan metninde/.test(c)));
+});
+
+test('fiyat modeli: olağan aralığın çok altındaki hasarsız görünen ilan Şüpheli', () => {
+  const db = market([{ key: 'sahibinden:61', sourceId: '61', modelRaw: 'Tesla Model Y Premium (Juniper)', year: 2025, km: 15000, price: 2500000 }]);
+  const a = db.listings['sahibinden:61'].a;
+  assert.equal(a.label, 'Şüpheli', `sapma ${a.deviation}, z ${a.z}`);
+  assert.ok(a.cautions[0].includes('kaydı görünmeyen ağır hasar'));
 });
 
 test('sahibinden ağır hasar listesi: boş veya filtresiz gelen liste kimseyi "kaydı yok" yapmaz', () => {

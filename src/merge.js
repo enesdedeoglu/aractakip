@@ -1,7 +1,8 @@
 // Tarama sonuçlarını veritabanına işler; yeni / fiyat değişimi / kalkan ilanları tespit eder.
 import { classify } from './classify.js';
-import { buildMarket, analyzeListing, marketSummary } from './analyze.js';
-import { findDuplicates, groupView, findRelists } from './dedupe.js';
+import { buildMarket, analyzeListing, marketSummary, resolveTrims } from './analyze.js';
+import { findDuplicates, groupView, findRelists, heavyHistory } from './dedupe.js';
+import { loadSettings } from './settings.js';
 
 const HOUR = 3600000;
 const KEEP_REMOVED_DAYS = 365; // arşiv: kaldırılan ilanlar 1 yıl saklanır
@@ -143,8 +144,11 @@ function mergeDamage(a = {}, b = {}) {
   return out;
 }
 
-/** Sınıflandırma + piyasa modeli + tavsiyeleri yeniden hesapla */
-export function recompute(db) {
+/**
+ * Sınıflandırma + piyasa modeli + tavsiyeleri yeniden hesapla
+ * @param opts.newPrices  satıştaki versiyonların sıfır fiyatları (varsayılan: config/settings.json)
+ */
+export function recompute(db, { newPrices = loadSettings().newPrices } = {}) {
   const all = Object.values(db.listings);
   // Site simgesi gibi fotoğraf olmayan görsel adreslerini temizle (sonraki taramada doğrusu gelir)
   for (const l of all) if (l.image && /\/assets\/images\//.test(l.image)) l.image = null;
@@ -152,20 +156,35 @@ export function recompute(db) {
   // Farklı sitelerdeki aynı aracı eşleştir; piyasa modeli ve karşılaştırmalar her aracı bir kez saysın
   db.dupGroups = findDuplicates(all);
   db.relists = findRelists(all);
+  // Aynı aracın başka/önceki ilanında ağır hasar kayıtlıysa bu ilan da ağır hasarlı sayılır
+  for (const [k, h] of heavyHistory(all, (l) => heavyStatus(l) === 'var')) {
+    const c = db.listings[k].c;
+    c.warnings.push(HEAVY);
+    c.heavyFrom = `${h.source}${h.status === 'removed' ? ' (kalkmış)' : ''}`;
+  }
   // Gruptaki diğer ilanlardan gelen hasar/ekspertiz bilgisi de değerlendirmeye katılsın. Ağır hasar durumu
   // fiyat modelinden önce belirlenir (model ağır hasarlı araçları ayrı fiyatlar)
   const views = new Map();
-  for (const l of all) {
-    const view = l.dup ? groupView(l, db.listings) : l;
-    l.c.heavy = view.c.heavy = heavyStatus(view);
-    views.set(l.key, view);
-  }
+  const buildViews = () => {
+    for (const l of all) {
+      const view = l.dup ? groupView(l, db.listings) : l;
+      l.c.heavy = view.c.heavy = heavyStatus(view);
+      views.set(l.key, view);
+    }
+  };
+  buildViews();
   const unique = all.filter((l) => !l.dup || l.dup.primary);
-  const market = buildMarket(unique);
+  const opts = { newPrices };
+  // Versiyonu kesin olmayan Juniper'ler önce dışarıda bırakılıp fiyatlarına en uyan versiyona atanır
+  let market = buildMarket(unique.filter((l) => !l.c.trimAlt), opts);
+  if (resolveTrims(all, market) || all.some((l) => l.c.trimAlt)) buildViews();
+  market = buildMarket(unique, opts);
   for (const l of all) l.a = analyzeListing(views.get(l.key), market, unique);
-  db.market = marketSummary(unique);
+  db.market = marketSummary(unique, market);
   db.model = market ? { n: market.n, at: new Date().toISOString() } : null;
 }
+
+const HEAVY = 'Ağır hasar kayıtlı';
 
 /**
  * Ağır hasar kaydı durumu: 'var' | 'yok' | 'bilinmiyor'

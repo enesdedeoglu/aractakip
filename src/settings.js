@@ -22,6 +22,9 @@ const DEFAULTS = {
   },
   // Otokoç ve Borusan GitHub sunucularını engelliyor; Otokoç ara sıra açık olabilir diye denenir
   cloud: { sources: ['arabam', 'otokoc'] },
+  // Satıştaki versiyonların güncel sıfır fiyatları (ÖTV+KDV dahil, TL). Fiyat modeli az ilanlı versiyonlarda
+  // bunlara dayanır, kartlarda "sıfırın %93'ü" gösterilir. Tesla zam yaptıkça güncelleyin.
+  newPrices: {},
   // Bildirim filtresi: boş bırakılırsa tüm yeni Tesla ilanları bildirilir
   alerts: {
     models: [],
