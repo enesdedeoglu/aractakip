@@ -763,3 +763,15 @@ test('köprü: üst üste 3 okunamayan detay sayfasından sonra detay okuma 12 s
   assert.equal(b.next(), null);
   assert.ok(b.status().sahibindenDetailPausedUntil);
 });
+
+test('köprü: yeni eklenti sürümü gelince detay okuma durdurması ve hatalı ilanlar sıfırlanır', async () => {
+  const { b } = testBridge({ caps: ['sahibindenDetail'], intervals: { sahibindenDetail: 0 } });
+  for (let i = 0; i < 3; i++) {
+    const u = b.next();
+    if (u) await b.page({ url: u, kind: 'sahibindenDetail', detail: { id: '1348205308', empty: true } });
+  }
+  assert.equal(b.next(), null, 'durdu');
+  await b.page({ url: 'https://www.sahibinden.com/tesla', challenge: true, caps: ['sahibindenDetail'], ev: '2.2.2' });
+  assert.match(b.next(), /1348205308/, 'aynı ilan yeni sürümle tekrar denenir');
+  assert.equal(b.status().extVersion, '2.2.2');
+});

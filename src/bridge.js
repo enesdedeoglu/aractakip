@@ -48,6 +48,7 @@ export function createBridge({ onScan, needDetail, onChallenge, shared = () => (
   let detailDiag = 0;       // ilk detay sayfalarında bulunanlar tanı için kayda yazılır
   let detailFails = 0;      // üst üste okunamayan detay sayfası
   let detailPausedUntil = 0;
+  let extVersion = null;     // eklentinin bildirdiği sürüm (eski eklenti bildirmez)
 
   // Görev zamanı geldi mi? Ortak kayıttaki son tarama (hangi cihaz yaptıysa) ve engel süresi de dikkate alınır.
   // Aralıklar ±%15 oynatılır ki istekler saat gibi düzenli olmasın.
@@ -183,9 +184,19 @@ export function createBridge({ onScan, needDetail, onChallenge, shared = () => (
     return pick.url;
   }
 
-  async function page({ url, kind, html, arows, nextData, heads, rows, total, challenge, blocked, login, detail, caps: c }) {
+  async function page({ url, kind, html, arows, nextData, heads, rows, total, challenge, blocked, login, detail, caps: c, ev }) {
     lastSeen = Date.now();
     if (Array.isArray(c)) caps = new Set(c);
+    if (ev && ev !== extVersion) {
+      // Yeni eklenti kuruldu: önceki okuma hataları eski sürüme aitti, detay okumaya baştan başla
+      if (extVersion || detailPausedUntil) log(`eklenti sürümü ${extVersion || '?'} → ${ev}: sahibinden detay okuma sıfırlandı`);
+      else log(`eklenti sürümü: ${ev}`);
+      extVersion = ev;
+      detailFails = 0;
+      detailPausedUntil = 0;
+      failedDetail.clear();
+      requested.clear();
+    }
     const task = inflight?.task;
     const hostSrc = /sahibinden/.test(url) ? 'sahibinden' : /arabam/.test(url) ? 'arabam' : /borusan/.test(url) ? 'borusan' : null;
     if (hostSrc) timeouts[hostSrc] = 0;
@@ -316,6 +327,7 @@ export function createBridge({ onScan, needDetail, onChallenge, shared = () => (
     crawl: crawl ? { source: crawl.source, pages: crawl.pages.length } : null,
     inflight: inflight?.task || null,
     caps: [...caps],
+    extVersion,
     sahibindenDetail24h: detailTimes.length,
     sahibindenDetailPausedUntil: detailPausedUntil > Date.now() ? new Date(detailPausedUntil).toISOString() : undefined,
     last: Object.fromEntries(Object.entries(last).map(([k, v]) => [k, new Date(v).toISOString()])),

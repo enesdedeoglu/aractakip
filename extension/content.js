@@ -5,7 +5,8 @@
   // Büyük sayfa gönderilemezse küçük bir tanı mesajıyla ajana bildir
   // Bu sürümün okuyabildiği sayfa türleri: ajan detay sayfalarını yalnızca destekleyen eklentiye ister
   const CAPS = ['sahibindenDetail'];
-  const send = (msg) => api.runtime.sendMessage({ ...msg, url: location.href, caps: CAPS }).catch((e) =>
+  const EV = api.runtime.getManifest?.().version;
+  const send = (msg) => api.runtime.sendMessage({ ...msg, url: location.href, caps: CAPS, ev: EV }).catch((e) =>
     api.runtime.sendMessage({ type: 'diag', where: 'content', error: `${host} ${msg.kind || ''} ${Math.round(JSON.stringify(msg).length / 1024)} KB gönderilemedi: ${e && e.message}` }).catch(() => {}));
   const host = location.host;
   const isChallenge = () =>
