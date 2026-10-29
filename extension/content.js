@@ -3,7 +3,9 @@
 (() => {
   const api = globalThis.browser ?? globalThis.chrome;
   // Büyük sayfa gönderilemezse küçük bir tanı mesajıyla ajana bildir
-  const send = (msg) => api.runtime.sendMessage({ ...msg, url: location.href }).catch((e) =>
+  // Bu sürümün okuyabildiği sayfa türleri: ajan detay sayfalarını yalnızca destekleyen eklentiye ister
+  const CAPS = ['sahibindenDetail'];
+  const send = (msg) => api.runtime.sendMessage({ ...msg, url: location.href, caps: CAPS }).catch((e) =>
     api.runtime.sendMessage({ type: 'diag', where: 'content', error: `${host} ${msg.kind || ''} ${Math.round(JSON.stringify(msg).length / 1024)} KB gönderilemedi: ${e && e.message}` }).catch(() => {}));
   const host = location.host;
   const isChallenge = () =>
@@ -37,6 +39,47 @@
     });
     const total = Number((document.querySelector('.result-text')?.innerText.match(/([\d.]+)\s*ilan/) || [])[1]?.replace(/\./g, '')) || null;
     send({ kind: 'sahibinden', heads, rows, total });
+    return true;
+  }
+
+  // İlan detay sayfası: özellik listesi (Ağır Hasar Kayıtlı, Çekiş, Kimden…), açıklama, boya/değişen bilgisi.
+  // Sayfa düzeni değişebileceği için birkaç yoldan okunur; ajan ilk sayfalarda neyin bulunduğunu kaydına yazar.
+  const detailId = () => (location.pathname.match(/\/ilan\/.*?(\d{9,})\/detay/) || [])[1];
+  const clean = (t) => (t || '').replace(/[ \t ]+/g, ' ').replace(/\s*\n\s*/g, '\n').trim();
+  function sahibindenDetail() {
+    const id = detailId();
+    if (!id) return false;
+    const props = {};
+    for (const li of document.querySelectorAll('.classifiedInfoList li, .classifiedInfo ul li')) {
+      const k = clean(li.querySelector('strong, .label, dt')?.textContent).replace(/:$/, '');
+      const v = clean(li.querySelector('span, .value, dd')?.textContent);
+      if (k && k.length < 40 && !(k in props)) props[k] = v.slice(0, 100);
+    }
+    if (!Object.keys(props).length) return false;
+    const desc = clean((document.querySelector('#classifiedDescription, .classifiedDescription, [id*="escription"]') || {}).innerText).slice(0, 3000);
+    // Boya / değişen: "Orijinal / Lokal Boyalı / Boyalı / Değişmiş" başlıklı parça listeleri
+    const LABEL = /^(orijinal|orjinal|lokal boyal[ıi]|boyal[ıi]|de[ğg]i[şs]mi[şs]|de[ğg]i[şs]en|belirtilmemi[şs])( par[çc]alar)?\s*:?$/i;
+    const damage = [];
+    for (const el of document.querySelectorAll('h2, h3, h4, h5, strong, b, dt, span, p, li, div')) {
+      if (el.childElementCount > 1) continue;
+      const label = clean(el.textContent);
+      if (!label || label.length > 30 || !LABEL.test(label)) continue;
+      const sib = el.nextElementSibling;
+      const list = sib && sib.matches('ul, ol, dd, div, p') ? sib : el.parentElement?.querySelector('ul, ol');
+      const items = list ? [...new Set([...list.querySelectorAll('li')].map((x) => clean(x.textContent)).filter((t) => t && t.length < 40))] : [];
+      const text = !items.length && list ? clean(list.textContent).slice(0, 200) : '';
+      damage.push({ label, items: items.slice(0, 20), text });
+      if (damage.length >= 12) break;
+    }
+    // Parça şeması: hasar bölümündeki öğelerin sınıf adları (ör. "painted", "changed") – tanı ve yedek okuma için
+    const box = document.querySelector('[class*="damage" i], [id*="damage" i], [class*="car-part" i], [class*="boya" i]');
+    const parts = box ? [...box.querySelectorAll('[class]')].slice(0, 80)
+      .map((e) => ({ cls: String(e.className?.baseVal ?? e.className).slice(0, 60), text: clean(e.getAttribute('title') || e.textContent).slice(0, 40) }))
+      .filter((p) => /paint|boya|chang|degis|değiş|local|lokal|orig|orij/i.test(p.cls)) : [];
+    send({ kind: 'sahibindenDetail', detail: {
+      id, props, desc, damage, parts: parts.slice(0, 40),
+      sample: box ? { cls: String(box.className?.baseVal ?? box.className).slice(0, 80), text: clean(box.textContent).slice(0, 400) } : null,
+    } });
     return true;
   }
 
@@ -99,7 +142,7 @@
     return true;
   }
 
-  const readers = { 'www.sahibinden.com': sahibinden, 'www.arabam.com': arabam, 'borusannext.com': borusan };
+  const readers = { 'www.sahibinden.com': () => sahibinden() || sahibindenDetail(), 'www.arabam.com': arabam, 'borusannext.com': borusan };
   const read = readers[host];
   if (!read) return;
 
@@ -125,6 +168,8 @@
     const ok = read();
     if (ok) { diag('okundu ve gönderildi'); return; }
     if (++tries <= 6) setTimeout(attempt, 2500);
+    // Detay sayfası okunamadı (ilan kalkmış, düzen değişmiş): ajan beklemesin, başlığı tanı için gönder
+    else if (host === 'www.sahibinden.com' && detailId()) send({ kind: 'sahibindenDetail', detail: { id: detailId(), empty: true, title: document.title.slice(0, 120), text: clean(document.body?.innerText).slice(0, 300) } });
     else diag(`okunamadı: satır=${document.querySelectorAll('.listing-list-item').length} tr=${document.querySelectorAll('tr').length} başlık="${document.title.slice(0, 60)}"`);
   };
   attempt();

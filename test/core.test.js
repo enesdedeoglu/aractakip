@@ -636,3 +636,118 @@ test('arabam mobil kart düzeni: model adresten, km başlıktan', async () => {
   assert.equal(l.city, 'İstanbul');
   assert.equal(l.sellerType, 'galeri');
 });
+
+import { parseDetail as parseSahDetail, detailCandidates } from '../src/sources/sahibinden.js';
+import { createBridge } from '../src/bridge.js';
+
+const SAH_DETAIL = {
+  id: '1348205308',
+  props: { 'İlan No': '1348205308', 'Seri': 'Model Y', 'Model': 'Standart (Juniper)', 'Yıl': '2025', 'KM': '14.400', 'Çekiş': 'Arkadan İtiş',
+    'Renk': 'Beyaz', 'Garanti': 'Evet', 'Ağır Hasar Kayıtlı': 'Hayır', 'Kimden': 'Galeriden', 'Menzil': '534 km' },
+  desc: 'Araç hatasızdır. Tramer kaydı 85 bin TL (sağ arka kapı). Geliştirilmiş otopilot ve komple PPF mevcuttur.',
+  damage: [
+    { label: 'Orijinal', items: ['Tavan', 'Kaput', 'Sol Ön Kapı'] },
+    { label: 'Lokal Boyalı', items: ['Sağ Arka Kapı'] },
+    { label: 'Boyalı', items: ['Sağ Arka Çamurluk', 'Arka Tampon'] },
+    { label: 'Değişmiş', items: [] },
+  ],
+};
+
+test('sahibinden detayı: ağır hasar alanı, boya/değişen grupları, açıklamadan tramer', () => {
+  const d = parseSahDetail(SAH_DETAIL);
+  assert.equal(d.damage.heavy, false);
+  assert.equal(d.damage.heavyBy, 'detay');
+  assert.equal(d.damage.summary, '2 boyalı, 1 lokal boyalı');
+  assert.equal(d.damage.original, false);
+  assert.equal(d.damage.painted, true);
+  assert.equal(d.damage.changed, false);
+  assert.equal(d.damage.tramer, 85000);
+  assert.equal(d.damage.tramerFrom, 'açıklama');
+  assert.equal(d.specs.drive, 'Arkadan İtiş');
+  assert.equal(d.specs.rangeKm, 534);
+  assert.equal(d.sellerType, 'galeri');
+  assert.equal(d.warranty, 'Garantili');
+  assert.match(d.description, /^Araç hatasızdır/);
+  assert.deepEqual(damageCounts(d.damage), { changed: 0, painted: 2, local: 1, paint: 2.5, tramer: 85000 });
+  // Hepsi orijinal; ağır hasar "Evet"
+  const o = parseSahDetail({ props: { 'Ağır Hasar Kayıtlı': 'Evet' }, damage: [{ label: 'Orijinal', items: ['Tavan'] }, { label: 'Boyalı', items: [] }] });
+  assert.deepEqual([o.damage.heavy, o.damage.summary, o.damage.original], [true, 'Tamamı orjinal', true]);
+  // Grup başlığı yoksa parça şemasının sınıf adlarından
+  const p = parseSahDetail({ props: { Seri: 'Model Y' }, parts: [{ cls: 'part changed' }, { cls: 'part painted' }, { cls: 'part original' }] });
+  assert.equal(p.damage.summary, '1 değişen, 1 boyalı');
+  // Bilgi yoksa alan yazılmaz (eski bilgiyi ezmesin)
+  assert.deepEqual(parseSahDetail({ props: { Seri: 'Model Y' } }).damage, {});
+});
+
+test('sahibinden detayı: yeni ilanlar önce, sonra Fırsat/Şüpheli; detayı olan veya kalkan ilan istenmez', () => {
+  const now = Date.parse('2026-10-29T12:00:00Z');
+  const mk = (id, o) => ({ key: `sahibinden:${id}`, source: 'sahibinden', status: 'active', url: `https://www.sahibinden.com/ilan/tesla-${id}/detay`, firstSeen: '2026-10-01T00:00:00Z', a: { label: 'Piyasa', z: 0 }, ...o });
+  const ls = [
+    mk(1, { firstSeen: '2026-10-29T08:00:00Z' }), mk(2, { firstSeen: '2026-10-28T20:00:00Z' }),
+    mk(3, { a: { label: 'Fırsat', z: -1.5 } }), mk(4, { a: { label: 'Şüpheli', z: -5 } }),
+    mk(5), mk(6, { firstSeen: '2026-10-29T09:00:00Z', detailAt: '2026-10-29T10:00:00Z' }),
+    mk(7, { firstSeen: '2026-10-29T09:00:00Z', status: 'removed' }), { ...mk(8, { firstSeen: '2026-10-29T09:00:00Z' }), source: 'arabam' },
+  ];
+  assert.deepEqual(detailCandidates(ls, now).map((u) => u.match(/tesla-(\d+)/)[1]), ['1', '2', '4', '3']);
+});
+
+function testBridge({ caps, candidates = ['https://www.sahibinden.com/ilan/tesla-1348205308/detay'], intervals = {} } = {}) {
+  const now = new Date().toISOString();
+  const scans = [];
+  const shared = (src) => ({ lastOk: now, lastFull: now, lastHeavy: now, lastOkRunner: 'local' });
+  const b = createBridge({ onScan: async (sc) => scans.push(sc), needDetail: (src) => (src === 'sahibinden' ? candidates : []), shared, intervals: { gap: 0, ...intervals } });
+  if (caps) b.page({ url: 'https://www.sahibinden.com/tesla', caps, challenge: true }); // eklenti yeteneklerini bildirir
+  return { b, scans };
+}
+
+test('köprü: detay sayfası yalnızca destekleyen eklentiye istenir', async () => {
+  assert.equal(testBridge().b.next(), null, 'eski eklenti: detay istenmez');
+  const { b, scans } = testBridge({ caps: ['sahibindenDetail'] });
+  const url = b.next();
+  assert.match(url, /1348205308\/detay/);
+  await b.page({ url, kind: 'sahibindenDetail', detail: SAH_DETAIL, caps: ['sahibindenDetail'] });
+  assert.equal(scans.length, 1);
+  assert.equal(scans[0].mode, 'detail');
+  assert.equal(scans[0].listings[0].sourceId, '1348205308');
+  assert.equal(scans[0].listings[0].damage.heavy, false);
+  assert.ok(scans[0].listings[0].detailAt);
+  assert.equal(b.status().sahibindenDetail24h, 1);
+});
+
+test('köprü: okunamayan detay tekrar istenmez; günlük sınır aşılmaz', async () => {
+  const { b } = testBridge({ caps: ['sahibindenDetail'], intervals: { sahibindenDetail: 0 } });
+  const url = b.next();
+  await b.page({ url, kind: 'sahibindenDetail', detail: { id: '1348205308', empty: true, title: 'İlan yayında değil' } });
+  assert.equal(b.next(), null, 'başarısız ilan tekrar istenmez');
+  const many = Array.from({ length: 5 }, (_, i) => `https://www.sahibinden.com/ilan/tesla-13000000${i}0/detay`);
+  const t = testBridge({ caps: ['sahibindenDetail'], candidates: many, intervals: { sahibindenDetail: 0, sahibindenDetailPerDay: 2 } });
+  const got = [];
+  for (let i = 0; i < 4; i++) {
+    const u = t.b.next();
+    if (u) { got.push(u); await t.b.page({ url: u, kind: 'sahibindenDetail', detail: { ...SAH_DETAIL, id: u.match(/(\d{9,})/)[1] } }); }
+  }
+  assert.equal(got.length, 2);
+});
+
+test('birleştirme: detaydaki ağır hasar alanını ağır hasar listesi ezmez; açıklama sınıflandırmaya girer', () => {
+  const db = emptyDb();
+  const base = { source: 'sahibinden', sourceId: '1348205308', title: 'TESLA', modelRaw: 'Tesla Model Y Standart', year: 2025, km: 14400, price: 2470000 };
+  mergeScans(db, [{ source: 'sahibinden', ok: true, listings: [base], runner: 'tablet' }]);
+  mergeScans(db, [{ source: 'sahibinden', ok: true, mode: 'detail', runner: 'tablet', listings: [{ source: 'sahibinden', sourceId: '1348205308', ...parseSahDetail({ ...SAH_DETAIL, props: { ...SAH_DETAIL.props, 'Ağır Hasar Kayıtlı': 'Evet' } }), detailAt: new Date().toISOString() }] }]);
+  const l = db.listings['sahibinden:1348205308'];
+  assert.ok(db.sources.sahibinden.lastDetail);
+  assert.equal(l.c.heavy, 'var');
+  assert.ok(l.c.tags.includes('EAP') && l.c.tags.includes('PPF'), 'açıklamadaki opsiyonlar');
+  // Ağır hasar listesi bu ilanı içermese de "Evet" bilgisi kalır
+  const others = Array.from({ length: 12 }, (_, i) => ({ ...base, sourceId: String(1300000000 + i) }));
+  mergeScans(db, [{ source: 'sahibinden', ok: true, listings: others, runner: 'tablet' }]);
+  mergeScans(db, [{ source: 'sahibinden', ok: true, mode: 'heavy', listings: [], heavyIds: ['1300000000'], heavyComplete: true, runner: 'tablet' }]);
+  assert.equal(db.listings['sahibinden:1348205308'].damage.heavy, true);
+  assert.equal(db.listings['sahibinden:1300000001'].damage.heavy, false);
+  // Sonraki liste taraması (hasar bilgisi boş) detay bilgisini silmez
+  mergeScans(db, [{ source: 'sahibinden', ok: true, listings: [{ ...base, damage: { tramer: null, heavy: null, summary: null, original: null } }], runner: 'tablet' }]);
+  const after = db.listings['sahibinden:1348205308'];
+  assert.equal(after.damage.summary, '2 boyalı, 1 lokal boyalı');
+  assert.equal(after.damage.tramer, 85000);
+  assert.ok(after.description);
+});

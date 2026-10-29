@@ -4,7 +4,7 @@
 // açılacağına ve sayfaların nasıl işleneceğine burada karar verilir.
 import { parseList as parseArabamList, fromRows as arabamFromRows, parseDetail as parseArabamDetail, kmFromTitle } from './sources/arabam.js';
 import { parseNextData as parseBorusan, toListing as borusanListing } from './sources/borusan.js';
-import { normalize as normalizeSahibinden, pickImage, isFakeRow } from './sources/sahibinden.js';
+import { normalize as normalizeSahibinden, pickImage, isFakeRow, parseDetail as parseSahibindenDetail, detailSummary } from './sources/sahibinden.js';
 import { log } from './util.js';
 
 const MIN = 60000;
@@ -16,7 +16,7 @@ const BOR = 'https://borusannext.com/araba-al/tesla';
 
 /**
  * @param opts.onScan (scan) => Promise   – tamamlanan taramayı veritabanına işler
- * @param opts.needDetail () => string[]  – detay bilgisi eksik arabam ilan adresleri
+ * @param opts.needDetail (source) => string[]  – detay bilgisi eksik ilan adresleri ('arabam' | 'sahibinden')
  * @param opts.onChallenge (url) => void
  */
 /**
@@ -28,6 +28,8 @@ export function createBridge({ onScan, needDetail, onChallenge, shared = () => (
     sahibinden: 15, sahibindenFull: 1440, sahibindenHeavy: 720,
     arabam: 5, arabamFull: 120,
     borusan: 10,
+    // sahibinden ilan detayı: yalnızca yeni ve değerlendirmesi detaya bağlı ilanlar, seyrek ve günlük sınırlı
+    sahibindenDetail: 6, sahibindenDetailPerDay: 80,
     gap: 0.75,     // iki sayfa açılışı arasındaki en kısa süre (dk)
     crawlGap: 1,   // tam taramada sayfalar arası en kısa süre (dk)
     ...intervals,
@@ -41,10 +43,13 @@ export function createBridge({ onScan, needDetail, onChallenge, shared = () => (
   const failedDetail = new Set();
   const requested = new Map();
   let loggedNoImg = 0; // fotoğrafsız satır tanısı yalnızca bir kez yazılsın
+  let caps = new Set();     // eklentinin okuyabildiği sayfa türleri (eski eklenti detay sayfası okuyamaz)
+  const detailTimes = [];   // son 24 saatte açılan sahibinden detay sayfaları
+  let detailDiag = 0;       // ilk detay sayfalarında bulunanlar tanı için kayda yazılır
 
   // Görev zamanı geldi mi? Ortak kayıttaki son tarama (hangi cihaz yaptıysa) ve engel süresi de dikkate alınır.
   // Aralıklar ±%15 oynatılır ki istekler saat gibi düzenli olmasın.
-  const SOURCE_OF = { arabam: 'arabam', arabamFull: 'arabam', sahibinden: 'sahibinden', sahibindenFull: 'sahibinden', sahibindenHeavy: 'sahibinden', borusan: 'borusan' };
+  const SOURCE_OF = { arabam: 'arabam', arabamFull: 'arabam', sahibinden: 'sahibinden', sahibindenFull: 'sahibinden', sahibindenHeavy: 'sahibinden', sahibindenDetail: 'sahibinden', borusan: 'borusan' };
   const jitter = {};
   const timeouts = {};
   const pausedUntil = {};
@@ -59,7 +64,7 @@ export function createBridge({ onScan, needDetail, onChallenge, shared = () => (
       const st = shared(src) || {};
       // Engel o siteyi engelli gören cihaza özel (ör. Mac'teki tarayıcı oturumu); eski ortak kayıt da geçerli
       if (Date.parse(st.blocks?.[runner]) > Date.now() || Date.parse(st.blockedUntil) > Date.now()) return false;
-      const at = Date.parse(task.endsWith('Full') ? st.lastFull : task.endsWith('Heavy') ? st.lastHeavy : st.lastOk);
+      const at = Date.parse(task.endsWith('Full') ? st.lastFull : task.endsWith('Heavy') ? st.lastHeavy : task.endsWith('Detail') ? st.lastDetail : st.lastOk);
       if (Number.isFinite(at) && Date.now() - at < span) { last[task] = at; return false; }
       // Asıl tarayıcı (ör. 7/24 açık tablet) bu siteyi son 3 tur içinde taradıysa diğer cihazlar girmez;
       // asıl tarayıcı kapanırsa 3 tur sonra yedek cihaz devralır
@@ -94,10 +99,27 @@ export function createBridge({ onScan, needDetail, onChallenge, shared = () => (
     return onScan({ source, ok: false, error: `${reason} (${hours} saat bekleniyor)`, listings: [], complete: false, mode: 'blocked', blockedUntil: until, blockCount: count });
   }
 
+  // Aynı detay sayfası bir saat içinde tekrar istenmesin (kayıt henüz yazılmamış olabilir)
+  const freshDetail = (u) => !failedDetail.has(u) && Date.now() - (requested.get(u) || 0) > 60 * MIN;
+
+  function nextSahibindenDetail() {
+    if (!caps.has('sahibindenDetail')) return null;
+    while (detailTimes.length && Date.now() - detailTimes[0] > 24 * 60 * MIN) detailTimes.shift();
+    if (detailTimes.length >= iv.sahibindenDetailPerDay) return null;
+    return needDetail('sahibinden').find(freshDetail) || null;
+  }
+
   function next() {
     lastSeen = Date.now();
     // Önceki sayfa bekleniyor (eski tabletlerde büyük sayfalar 1-2 dk sürebiliyor)
     if (inflight && Date.now() - inflight.at < (iv.pageTimeout || 2.5) * MIN) return null;
+    if (inflight?.task === 'sahibindenDetail') {
+      // Detay sayfası yanıt vermedi: o ilanı bir daha isteme, ama siteyi durdurma (liste taraması sürsün)
+      log(`eklenti: sahibinden detay zaman aşımı (${inflight.url})`);
+      failedDetail.add(inflight.url);
+      last.sahibindenDetail = Date.now();
+      inflight = null;
+    }
     if (inflight) {
       log(`eklenti: ${inflight.task} zaman aşımı`);
       const wasCrawl = inflight.task === 'crawl';
@@ -124,6 +146,7 @@ export function createBridge({ onScan, needDetail, onChallenge, shared = () => (
     if (crawl?.nextUrl && Date.now() - lastNav < iv.crawlGap * MIN) return null;
 
     let pick = null;
+    let sahDetail = null;
     if (crawl && crawl.nextUrl) pick = { task: 'crawl', url: crawl.nextUrl };
     else if (due('arabam', iv.arabam)) pick = due('arabamFull', iv.arabamFull)
       ? (crawl = { source: 'arabam', pages: [], page: 1, emptyStreak: 0, nextUrl: ARB, started: Date.now() }, { task: 'crawl', url: ARB })
@@ -133,10 +156,12 @@ export function createBridge({ onScan, needDetail, onChallenge, shared = () => (
       : { task: 'sahibinden', url: SAH };
     else if (due('sahibindenHeavy', iv.sahibindenHeavy)) pick = { task: 'sahibindenHeavy', url: SAH_HEAVY };
     else if (due('borusan', iv.borusan)) pick = { task: 'borusan', url: BOR };
-    else {
-      // Aynı detay sayfası bir saat içinde tekrar istenmesin (kayıt henüz yazılmamış olabilir)
-      const fresh = (u) => !failedDetail.has(u) && Date.now() - (requested.get(u) || 0) > 60 * MIN;
-      if (!detailQueue.length) detailQueue = needDetail().filter(fresh).slice(0, 10);
+    else if ((sahDetail = nextSahibindenDetail()) && due('sahibindenDetail', iv.sahibindenDetail)) {
+      requested.set(sahDetail, Date.now());
+      detailTimes.push(Date.now());
+      pick = { task: 'sahibindenDetail', url: sahDetail };
+    } else {
+      if (!detailQueue.length) detailQueue = needDetail('arabam').filter(freshDetail).slice(0, 10);
       const u = detailQueue.shift();
       if (u) { requested.set(u, Date.now()); pick = { task: 'arabamDetail', url: u }; }
     }
@@ -147,8 +172,9 @@ export function createBridge({ onScan, needDetail, onChallenge, shared = () => (
     return pick.url;
   }
 
-  async function page({ url, kind, html, arows, nextData, heads, rows, total, challenge, blocked, login }) {
+  async function page({ url, kind, html, arows, nextData, heads, rows, total, challenge, blocked, login, detail, caps: c }) {
     lastSeen = Date.now();
+    if (Array.isArray(c)) caps = new Set(c);
     const task = inflight?.task;
     const hostSrc = /sahibinden/.test(url) ? 'sahibinden' : /arabam/.test(url) ? 'arabam' : /borusan/.test(url) ? 'borusan' : null;
     if (hostSrc) timeouts[hostSrc] = 0;
@@ -176,6 +202,21 @@ export function createBridge({ onScan, needDetail, onChallenge, shared = () => (
     }
     const host = new URL(url).host;
     try {
+      if (host.endsWith('sahibinden.com') && detail) {
+        done();
+        const id = String(detail.id || (url.match(/(\d{9,})\/detay/) || [])[1] || '');
+        if (!id || detail.empty) {
+          failedDetail.add(url);
+          return log(`sahibinden detay okunamadı (${id}): "${detail.title || ''}" ${(detail.text || '').slice(0, 120)}`);
+        }
+        const parsed = parseSahibindenDetail(detail);
+        log(`sahibinden detay ${id}: ${detailSummary(parsed)}`);
+        if (detailDiag++ < 3) {
+          log(`sahibinden detay tanı: alanlar=${Object.keys(detail.props || {}).join('|')}`);
+          log(`sahibinden detay tanı: hasar=${JSON.stringify(detail.damage || []).slice(0, 400)} şema=${JSON.stringify((detail.parts || []).slice(0, 6)).slice(0, 300)} kutu=${JSON.stringify(detail.sample || null).slice(0, 300)}`);
+        }
+        return onScan({ source: 'sahibinden', listings: [{ source: 'sahibinden', sourceId: id, ...parsed, detailAt: new Date().toISOString() }], complete: false, mode: 'detail' });
+      }
       if (host.endsWith('sahibinden.com') && rows) {
         const pg = { url, heads, rows };
         if (task === 'sahibindenHeavy') {
@@ -256,6 +297,8 @@ export function createBridge({ onScan, needDetail, onChallenge, shared = () => (
     lastSeen: lastSeen ? new Date(lastSeen).toISOString() : null,
     crawl: crawl ? { source: crawl.source, pages: crawl.pages.length } : null,
     inflight: inflight?.task || null,
+    caps: [...caps],
+    sahibindenDetail24h: detailTimes.length,
     last: Object.fromEntries(Object.entries(last).map(([k, v]) => [k, new Date(v).toISOString()])),
   });
 

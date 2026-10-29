@@ -16,6 +16,9 @@ her ilana puan ve tavsiye verir. Yeni ilan, fiyat değişimi ve kalkan ilanları
 
 Eklenti, ajandan sıradaki adresi alır ve kendi sabitlenmiş sekmesinde açar (arabam 3 dk, sahibinden ve Borusan 5 dk;
 saatte bir arabam, 6 saatte bir sahibinden tam tarama). Sayfalar arasında en az ~25 sn beklenir.
+sahibinden ilan detay sayfaları (Ağır Hasar Kayıtlı, çekiş, boya/değişen, açıklama) yalnızca son 2 günde gelen ilanlar ile
+Fırsat/Şüpheli ilanlar için, en sık 6 dakikada bir ve günde en fazla 80 sayfa okunur (`agent.extension.sahibindenDetail*`).
+Detay okuma eklentinin 2.2.0 sürümüyle gelir; ajan eski eklentiye detay sayfası açtırmaz.
 Ayrı bir otomasyon penceresi açılmaz; sitelere senin normal tarayıcın gibi görünür.
 
 Ajan veriyi GitHub'daki `data/db.enc.json` dosyasına (şifreli) yazar. Siteyi de ajan yayınlar (`src/publish.js`):
@@ -142,10 +145,14 @@ STORE=fs npm run scan   # GitHub yerine yerel dosyaya yaz (geliştirme)
 - **Hasar durumuna göre fiyat:** ağır hasar, değişen/boyalı parça sayısı ve tramer tutarının etkisi ilanlardan öğrenilir
   (Ekim 2026: ağır hasar ≈ −%24, değişen parça başına ≈ −%3, boyalı parça ≈ −%1, 100 bin TL tramer ≈ −%2,4). Hasarlı aracın
   beklenen fiyatı buna göre düşürülür, hasarsız eşdeğeri ayrıca gösterilir.
-- **Ağır hasar:** arabam detayı (Ağır Hasarlı: Evet/Hayır), sahibinden "Ağır Hasar Kayıtlı" filtreli liste ve ilan metni
+- **Ağır hasar:** arabam ve sahibinden detayı (Ağır Hasarlı / Ağır Hasar Kayıtlı: Evet/Hayır), sahibinden "Ağır Hasar Kayıtlı" filtreli liste ve ilan metni
   ("ağır hasar", "pert", "çekme belgeli"; Türkçe karaktersiz yazımlar dahil, "ağır hasar kaydı yok" gibi olumsuzlar hariç).
   Aynı aracın bir sitesinde (kalkmış olsa da) ya da önceki ilanında ağır hasar yazıyorsa diğer ilandaki "yok" bilgisi bunu
   ezmez. Tramer aracın değerinin dörtte birini geçiyorsa uyarı çıkar.
+- **İlan açıklaması:** sahibinden detayından okunan açıklamadan tramer tutarı ("tramer 85 bin"), FSD/EAP, PPF, Quicksilver,
+  beyaz iç, 20" jant gibi opsiyonlar çıkarılır. Opsiyonların fiyat etkisi modelde öğrenilir ve beklenen fiyata eklenir.
+  "Ağır hasar sorgusu yapılabilir" gibi kalıp cümleler hasar sayılmaz; ilanın Ağır Hasar Kayıtlı alanı "Hayır" iken
+  açıklamada ağır hasar geçerse yalnızca uyarı çıkar.
 - **Satış sinyali ve teklif:** kısa sürede (≤21 gün) kalkan ilanlar büyük ihtimalle satıldı; fiyatları kalkış zamanına göre
   düzeltilerek gerçekçi satış oranı (≈ ilan fiyatının %98'i) ve piyasanın aylık kayması ölçülür. Kartta "önerilen teklif",
   bu satış seviyesiyle ilan fiyatından pazarlık payı (ilanda kalma süresi ve fiyat düşüşleriyle artar) düşülmüş değerin küçüğüdür.

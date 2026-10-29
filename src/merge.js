@@ -104,6 +104,7 @@ export function mergeScans(db, scans, now = new Date()) {
     // sahibinden "Ağır Hasar Kayıtlı: Evet" filtreli liste: tam geldiyse diğer ilanlar "kaydı yok".
     // Boş liste "hiç ağır hasarlı yok" sayılmaz (sayfa eksik/boş yüklenmiş olabilir) – yoksa tüm ilanlar
     // yanlışlıkla "ağır hasar kaydı yok" görünür.
+    if (s.mode === 'detail') st.lastDetail = t;
     if (s.mode === 'heavy') {
       st.lastHeavy = t;
       const ids = new Set(s.heavyIds || []);
@@ -112,6 +113,8 @@ export function mergeScans(db, scans, now = new Date()) {
       const plausible = ids.size > 0 && ids.size <= Math.max(5, active.length * 0.5);
       if (s.heavyComplete && plausible) {
         for (const l of active) {
+          // İlan detayında okunan "Ağır Hasar Kayıtlı" alanı doğrudan bilgidir; liste onu ezmez
+          if (l.damage?.heavyBy === 'detay' && !ids.has(l.sourceId)) continue;
           const want = ids.has(l.sourceId);
           if (l.damage?.heavy !== want) { l.damage = { ...(l.damage || {}), heavy: want }; changes.updated++; }
         }

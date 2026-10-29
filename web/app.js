@@ -242,7 +242,7 @@
       if (f.hideReserved && l.reserved) return false;
       if (f.onlyFav && !state.favs.has(l.key)) return false;
       if (q) {
-        const hay = fold(`${l.title} ${l.modelRaw} ${l.city} ${l.district} ${l.sellerName} ${l.c.segment} ${(l.c.tags || []).join(' ')} ${(l.c.warnings || []).join(' ')}`);
+        const hay = fold(`${l.title} ${l.modelRaw} ${l.city} ${l.district} ${l.sellerName} ${l.c.segment} ${(l.c.tags || []).join(' ')} ${(l.c.warnings || []).join(' ')} ${l.description || ''}`);
         if (!q.split(/\s+/).every((w) => hay.includes(w))) return false;
       }
       return true;
@@ -442,6 +442,7 @@
         ${otherHtml}
         <div class="advice">${esc(a.advice || '')}</div>
         ${why ? `<ul class="why">${why}</ul>` : ''}
+        ${l.description ? `<details class="desc"><summary>İlan açıklaması</summary><p>${esc(l.description)}</p></details>` : ''}
         ${sparkline(l.vehicleHistory || l.priceHistory)}
         ${relistLine(l)}
         <button class="hist-btn" type="button" data-hist="${esc(l.key)}">📈 Fiyat geçmişi${(l.vehicleHistory || l.priceHistory || []).length > 1 ? ` (${(l.vehicleHistory || l.priceHistory).length - 1} değişim)` : ''}</button>

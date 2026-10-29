@@ -14,6 +14,7 @@ import { runCycle } from './run.js';
 import { loadSettings } from './settings.js';
 import { closeContext } from './browser.js';
 import { createBridge } from './bridge.js';
+import { detailCandidates as sahibindenDetailCandidates } from './sources/sahibinden.js';
 import { openStore } from './store.js';
 import { setMailPause, DURATIONS } from './prefs.js';
 import { publishSite } from './publish.js';
@@ -85,7 +86,7 @@ const bridge = createBridge({
       notifyDesktop(`${host} doğrulama istiyor`, 'Tarayıcıdaki Tesla İlan Takip sekmesinde doğrulamayı tamamlayın.');
     }
   },
-  needDetail: () => Object.values(latestDb?.listings || {})
+  needDetail: (source = 'arabam') => source === 'sahibinden' ? sahibindenDetailCandidates(Object.values(latestDb?.listings || {})) : Object.values(latestDb?.listings || {})
     .filter((l) => l.source === 'arabam' && l.status === 'active' && !l.detailAt)
     .sort((a, b) => Date.parse(b.firstSeen) - Date.parse(a.firstSeen))
     .map((l) => l.url),
