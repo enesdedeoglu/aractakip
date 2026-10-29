@@ -87,7 +87,7 @@ export function normalize(pages) {
 // ---------- İlan detay sayfası ----------
 const DAY = 86400000;
 // Ayrıştırıcı sürümü: eski sürümle okunmuş detaylar bir kez yeniden okunur
-export const DETAIL_V = 3;
+export const DETAIL_V = 4;
 const GROUPS = [
   ['changed', /^de[gğ]i[sş](mi[sş]|en)/],
   ['local', /^lokal/],

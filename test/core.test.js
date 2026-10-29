@@ -685,7 +685,7 @@ test('sahibinden detayı: yeni ilanlar önce, sonra Fırsat/Şüpheli; detayı o
   const ls = [
     mk(1, { firstSeen: '2026-10-29T08:00:00Z' }), mk(2, { firstSeen: '2026-10-28T20:00:00Z' }),
     mk(3, { a: { label: 'Fırsat', z: -1.5 } }), mk(4, { a: { label: 'Şüpheli', z: -5 } }),
-    mk(5), mk(6, { firstSeen: '2026-10-29T09:00:00Z', detailAt: '2026-10-29T10:00:00Z', detailV: 3 }),
+    mk(5), mk(6, { firstSeen: '2026-10-29T09:00:00Z', detailAt: '2026-10-29T10:00:00Z', detailV: 4 }),
     mk(7, { firstSeen: '2026-10-29T09:00:00Z', status: 'removed' }), { ...mk(8, { firstSeen: '2026-10-29T09:00:00Z' }), source: 'arabam' },
   ];
   assert.deepEqual(detailCandidates(ls, now).map((u) => u.match(/tesla-(\d+)/)[1]), ['1', '2', '4', '3']);
@@ -794,7 +794,7 @@ test('sahibinden detayı (gerçek düzen): boya/değişen bölüm metninden, aç
   assert.equal(damaged.damage.heavy, true);
   assert.equal(damaged.description, '', 'satıcı yazısı yok: donanım listesi açıklama sayılmaz');
   assert.equal(damaged.specs.hp, 526);
-  assert.equal(damaged.detailV, 3);
+  assert.equal(damaged.detailV, 4);
   const clean = parseSahDetail({ ...REAL, desc: `Aracı geçen yıl aldık. Tramer ve hasar kaydı yoktur. EAP ömür boyu.\nBoyalı veya Değişen Parça\nOrijinal\nLokal Boyalı\nBoyalı\nDeğişen\nOrijinal\nAracın tüm parçaları orijinaldır. Değişen ve boyalı parçası bulunmamaktadır.${FEATURES}` });
   assert.deepEqual([clean.damage.summary, clean.damage.original, clean.damage.painted, clean.damage.changed], ['Tamamı orjinal', true, false, false]);
   assert.equal(clean.description, 'Aracı geçen yıl aldık. Tramer ve hasar kaydı yoktur. EAP ömür boyu.');
@@ -812,7 +812,7 @@ test('sahibinden detayı (gerçek düzen): boya/değişen bölüm metninden, aç
 test('sahibinden detayı: eski ayrıştırıcıyla okunmuşlar yeni ilanlardan sonra yeniden okunur', () => {
   const now = Date.parse('2026-10-29T12:00:00Z');
   const mk = (id, o) => ({ key: `sahibinden:${id}`, source: 'sahibinden', status: 'active', url: `https://www.sahibinden.com/ilan/tesla-${id}/detay`, firstSeen: '2026-10-01T00:00:00Z', a: { label: 'Piyasa' }, ...o });
-  const ls = [mk(1, { detailAt: 'x' }), mk(2, { firstSeen: '2026-10-29T08:00:00Z' }), mk(3, { detailAt: 'x', detailV: 3 }), mk(4, { a: { label: 'Fırsat' } })];
+  const ls = [mk(1, { detailAt: 'x' }), mk(2, { firstSeen: '2026-10-29T08:00:00Z' }), mk(3, { detailAt: 'x', detailV: 4 }), mk(4, { a: { label: 'Fırsat' } })];
   assert.deepEqual(detailCandidates(ls, now).map((u) => u.match(/tesla-(\d+)/)[1]), ['2', '1', '4']);
 });
 
