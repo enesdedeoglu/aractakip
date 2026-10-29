@@ -114,7 +114,8 @@ export function createBridge({ onScan, needDetail, onChallenge, shared = () => (
   }
 
   function nextSahibindenDetail() {
-    if (!caps.has('sahibindenDetail') || detailPausedUntil > Date.now()) return null;
+    // 2.2.2 öncesi eklentilerin detay okuyucusu güncel sahibinden sayfasını tanımıyor (sürüm de bildirmiyorlar)
+    if (!caps.has('sahibindenDetail') || !extVersion || detailPausedUntil > Date.now()) return null;
     while (detailTimes.length && Date.now() - detailTimes[0] > 24 * 60 * MIN) detailTimes.shift();
     if (detailTimes.length >= iv.sahibindenDetailPerDay) return null;
     return needDetail('sahibinden').find(freshDetail) || null;

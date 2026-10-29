@@ -696,12 +696,15 @@ function testBridge({ caps, candidates = ['https://www.sahibinden.com/ilan/tesla
   const scans = [];
   const shared = (src) => ({ lastOk: now, lastFull: now, lastHeavy: now, lastOkRunner: 'local' });
   const b = createBridge({ onScan: async (sc) => scans.push(sc), needDetail: (src) => (src === 'sahibinden' ? candidates : []), shared, intervals: { gap: 0, ...intervals } });
-  if (caps) b.page({ url: 'https://www.sahibinden.com/tesla', caps, challenge: true }); // eklenti yeteneklerini bildirir
+  if (caps) b.page({ url: 'https://www.sahibinden.com/tesla', caps, ev: '2.2.2', challenge: true }); // eklenti yeteneklerini bildirir
   return { b, scans };
 }
 
 test('köprü: detay sayfası yalnızca destekleyen eklentiye istenir', async () => {
   assert.equal(testBridge().b.next(), null, 'eski eklenti: detay istenmez');
+  const old = testBridge();
+  old.b.page({ url: 'https://www.sahibinden.com/tesla', caps: ['sahibindenDetail'], challenge: true });
+  assert.equal(old.b.next(), null, 'sürüm bildirmeyen 2.2.0/2.2.1: detay istenmez');
   const { b, scans } = testBridge({ caps: ['sahibindenDetail'] });
   const url = b.next();
   assert.match(url, /1348205308\/detay/);
@@ -771,7 +774,7 @@ test('köprü: yeni eklenti sürümü gelince detay okuma durdurması ve hatalı
     if (u) await b.page({ url: u, kind: 'sahibindenDetail', detail: { id: '1348205308', empty: true } });
   }
   assert.equal(b.next(), null, 'durdu');
-  await b.page({ url: 'https://www.sahibinden.com/tesla', challenge: true, caps: ['sahibindenDetail'], ev: '2.2.2' });
+  await b.page({ url: 'https://www.sahibinden.com/tesla', challenge: true, caps: ['sahibindenDetail'], ev: '2.2.3' });
   assert.match(b.next(), /1348205308/, 'aynı ilan yeni sürümle tekrar denenir');
-  assert.equal(b.status().extVersion, '2.2.2');
+  assert.equal(b.status().extVersion, '2.2.3');
 });
