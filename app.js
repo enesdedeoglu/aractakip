@@ -242,7 +242,7 @@
       if (f.hideReserved && l.reserved) return false;
       if (f.onlyFav && !state.favs.has(l.key)) return false;
       if (q) {
-        const hay = fold(`${l.title} ${l.modelRaw} ${l.city} ${l.district} ${l.sellerName} ${l.c.segment} ${(l.c.tags || []).join(' ')} ${(l.c.warnings || []).join(' ')}`);
+        const hay = fold(`${l.title} ${l.modelRaw} ${l.city} ${l.district} ${l.sellerName} ${l.c.segment} ${(l.c.tags || []).join(' ')} ${(l.c.warnings || []).join(' ')} ${l.description || ''}`);
         if (!q.split(/\s+/).every((w) => hay.includes(w))) return false;
       }
       return true;
@@ -442,6 +442,7 @@
         ${otherHtml}
         <div class="advice">${esc(a.advice || '')}</div>
         ${why ? `<ul class="why">${why}</ul>` : ''}
+        ${l.description ? `<details class="desc"><summary>İlan açıklaması</summary><p>${esc(l.description)}</p></details>` : ''}
         ${sparkline(l.vehicleHistory || l.priceHistory)}
         ${relistLine(l)}
         <button class="hist-btn" type="button" data-hist="${esc(l.key)}">📈 Fiyat geçmişi${(l.vehicleHistory || l.priceHistory || []).length > 1 ? ` (${(l.vehicleHistory || l.priceHistory).length - 1} değişim)` : ''}</button>
@@ -497,7 +498,7 @@
       ...Object.entries(mt).filter(([, t]) => t.change != null).map(([m, t]) => `<b>${esc(m)}</b> genel fiyat seviyesi son ${t.days} günde ${pctSigned(t.change)}.`),
     ].filter(Boolean).join(' ');
     const de = state.db.market?.damageEffects;
-    $('#dmgEffects').innerHTML = de ? `<b>Hasarın fiyata etkisi</b> (ilanlardan öğrenilen): ağır hasar kaydı ${pctSigned(de.heavy, 0)} · değişen parça başına ${pctSigned(de.changed)} · boyalı parça başına ${pctSigned(de.painted)} · 100 bin TL tramer ${pctSigned(de.tramer100k)}. Tahminin genel tipik hatası ±%${((state.db.market.typicalError || 0) * 100).toLocaleString('tr-TR', { maximumFractionDigits: 1 })}.` : '';
+    $('#dmgEffects').innerHTML = de ? `<b>Hasarın fiyata etkisi</b> (ilanlardan öğrenilen): ağır hasar kaydı ${pctSigned(de.heavy, 0)} · değişen parça başına ${pctSigned(de.changed)} · boyalı parça başına ${pctSigned(de.painted)} · 100 bin TL tramer ${pctSigned(de.tramer100k)}. ${Object.keys(state.db.market?.optionEffects || {}).length ? `<br><b>Opsiyonların etkisi:</b> ${Object.entries(state.db.market.optionEffects).map(([k, v]) => `${esc(k)} ${pctSigned(v)}`).join(' · ')}. ` : ''}Tahminin genel tipik hatası ±%${((state.db.market.typicalError || 0) * 100).toLocaleString('tr-TR', { maximumFractionDigits: 1 })}.` : '';
   }
 
   // ---------- Yeniden ilan & arşiv ----------
