@@ -87,7 +87,7 @@ export function normalize(pages) {
 // ---------- İlan detay sayfası ----------
 const DAY = 86400000;
 // Ayrıştırıcı sürümü: eski sürümle okunmuş detaylar bir kez yeniden okunur
-export const DETAIL_V = 2;
+export const DETAIL_V = 3;
 const GROUPS = [
   ['changed', /^de[gğ]i[sş](mi[sş]|en)/],
   ['local', /^lokal/],
@@ -110,31 +110,39 @@ export function sellerText(desc) {
 }
 
 // Kaporta parçaları (uzun adlar önce: "motor kaputu" içindeki "kaput" ayrıca sayılmasın)
-const PARTS = ['motor kaputu', 'sag on camurluk', 'sol on camurluk', 'sag arka camurluk', 'sol arka camurluk', 'sag on kapi', 'sol on kapi',
-  'sag arka kapi', 'sol arka kapi', 'bagaj kapagi', 'on tampon', 'arka tampon', 'tavan', 'kaput'];
-const PART_RE = new RegExp(PARTS.join('|'), 'g');
+const PART_NAMES = ['Motor Kaputu', 'Sağ Ön Çamurluk', 'Sol Ön Çamurluk', 'Sağ Arka Çamurluk', 'Sol Arka Çamurluk', 'Sağ Ön Kapı', 'Sol Ön Kapı',
+  'Sağ Arka Kapı', 'Sol Arka Kapı', 'Bagaj Kapağı', 'Ön Tampon', 'Arka Tampon', 'Tavan', 'Kaput'];
+// Bölüm sahibinden'in kendi ürettiği metin (Türkçe karakterler tutarlı): küçük harfe çevrilip olduğu gibi okunur
+const lower = (t) => (t || '').toLocaleLowerCase('tr-TR');
+const PART_OF = new Map(PART_NAMES.map((p) => [lower(p), p]));
+// Parça adı ve varsa yanındaki neden: "Ön Tampon (Kırık / Çatlak)"
+const PART_RE = new RegExp(`(${[...PART_OF.keys()].join('|')})(?:\\s*\\(([^)]{1,40})\\))?`, 'g');
 
 /**
  * Açıklama kutusundaki boya/değişen bölümü: "Değişen Parçalar Motor Kaputu Sağ Ön Çamurluk" ya da
  * "Aracın tüm parçaları orijinaldır". @returns { changed, painted, local, original } | null (bölüm yok)
  */
 export function parseDamageText(desc) {
-  const t = fold(desc || '').replace(/\s+/g, ' ');
-  const i = t.search(/boyali veya degisen parca/);
+  const t = lower(desc).replace(/\s+/g, ' ');
+  const i = t.search(/boyalı veya değişen parça/);
   if (i < 0) return null;
-  let sec = t.slice(i + 'boyali veya degisen parca'.length);
-  const end = sec.search(/\b(guvenlik abs|ic donanim|dis donanim|multimedya)\b/);
+  let sec = t.slice(i + 'boyalı veya değişen parça'.length);
+  const end = sec.search(/(güvenlik abs|iç donanım|dış donanım|multimedya)/);
   if (end >= 0) sec = sec.slice(0, end);
-  if (/tum parcalari orijinal/.test(sec)) return { changed: 0, painted: 0, local: 0, original: true };
+  if (/tüm parçaları orijinal/.test(sec)) return { changed: 0, painted: 0, local: 0, original: true };
   const n = { changed: 0, painted: 0, local: 0 };
-  const heads = [...sec.matchAll(/(lokal boyali|boyali|degisen|degismis) parcalar/g)];
+  const parts = [];
+  const heads = [...sec.matchAll(/(lokal boyalı|boyalı|değişen|değişmiş) parçalar/g)];
   if (!heads.length) return null;
   heads.forEach((h, k) => {
+    const kind = h[1] === 'lokal boyalı' ? 'local' : h[1] === 'boyalı' ? 'painted' : 'changed';
     const seg = sec.slice(h.index + h[0].length, heads[k + 1]?.index ?? sec.length);
-    const count = (seg.match(PART_RE) || []).length;
-    n[h[1] === 'lokal boyali' ? 'local' : h[1] === 'boyali' ? 'painted' : 'changed'] += count;
+    for (const m of seg.matchAll(PART_RE)) {
+      n[kind]++;
+      parts.push({ part: PART_OF.get(m[1]), kind, note: m[2] ? m[2].replace(/\s*\/\s*/g, '/').trim() : undefined });
+    }
   });
-  return { ...n, original: false };
+  return { ...n, original: false, parts };
 }
 
 /**
@@ -181,6 +189,17 @@ export function parseDetail(d = {}) {
   const bad = n.changed + n.painted + n.local;
   let summary = [n.changed && `${n.changed} değişen`, n.painted && `${n.painted} boyalı`, n.local && `${n.local} lokal boyalı`].filter(Boolean).join(', ') || null;
   if (!summary && groups && n.original) summary = 'Tamamı orjinal';
+  // Parça adları ve nedenleri: "2 değişen (Ön Tampon, Motor Kaputu – kırık/catlak)"
+  const parts = fromText?.parts || [];
+  if (summary && parts.length) {
+    const KIND = { changed: 'değişen', painted: 'boyalı', local: 'lokal boyalı' };
+    summary = Object.entries(KIND).map(([k, label]) => {
+      const ps = parts.filter((p) => p.kind === k);
+      if (!ps.length) return null;
+      const notes = [...new Set(ps.map((p) => p.note).filter(Boolean))];
+      return `${ps.length} ${label} (${ps.map((p) => p.part).join(', ')}${notes.length ? ` – ${notes.join(', ')}` : ''})`;
+    }).filter(Boolean).join(', ');
+  }
   // Bazı ilanlarda özellik listesinde doğrudan "Boya-değişen" alanı var
   const paintProp = Object.entries(props).find(([k]) => /boya|degis/.test(k))?.[1];
   if (!summary && paintProp && !/belirtilmemis/.test(fold(paintProp))) summary = paintProp.slice(0, 80);
