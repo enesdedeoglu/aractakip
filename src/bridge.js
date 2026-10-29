@@ -46,6 +46,8 @@ export function createBridge({ onScan, needDetail, onChallenge, shared = () => (
   let caps = new Set();     // eklentinin okuyabildiği sayfa türleri (eski eklenti detay sayfası okuyamaz)
   const detailTimes = [];   // son 24 saatte açılan sahibinden detay sayfaları
   let detailDiag = 0;       // ilk detay sayfalarında bulunanlar tanı için kayda yazılır
+  let detailFails = 0;      // üst üste okunamayan detay sayfası
+  let detailPausedUntil = 0;
 
   // Görev zamanı geldi mi? Ortak kayıttaki son tarama (hangi cihaz yaptıysa) ve engel süresi de dikkate alınır.
   // Aralıklar ±%15 oynatılır ki istekler saat gibi düzenli olmasın.
@@ -102,8 +104,16 @@ export function createBridge({ onScan, needDetail, onChallenge, shared = () => (
   // Aynı detay sayfası bir saat içinde tekrar istenmesin (kayıt henüz yazılmamış olabilir)
   const freshDetail = (u) => !failedDetail.has(u) && Date.now() - (requested.get(u) || 0) > 60 * MIN;
 
+  // Okuyucu sayfa düzenine uymuyorsa boşuna sahibinden ziyareti olmasın: 3 başarısızlıktan sonra 12 saat ara
+  function detailFailed(why) {
+    if (++detailFails < 3) return;
+    detailFails = 0;
+    detailPausedUntil = Date.now() + 12 * 60 * MIN;
+    log(`⏸ sahibinden detay: üst üste 3 sayfa okunamadı (${why}) – bu cihazda 12 saat detay okunmayacak`);
+  }
+
   function nextSahibindenDetail() {
-    if (!caps.has('sahibindenDetail')) return null;
+    if (!caps.has('sahibindenDetail') || detailPausedUntil > Date.now()) return null;
     while (detailTimes.length && Date.now() - detailTimes[0] > 24 * 60 * MIN) detailTimes.shift();
     if (detailTimes.length >= iv.sahibindenDetailPerDay) return null;
     return needDetail('sahibinden').find(freshDetail) || null;
@@ -119,6 +129,7 @@ export function createBridge({ onScan, needDetail, onChallenge, shared = () => (
       failedDetail.add(inflight.url);
       last.sahibindenDetail = Date.now();
       inflight = null;
+      detailFailed('zaman aşımı');
     }
     if (inflight) {
       log(`eklenti: ${inflight.task} zaman aşımı`);
@@ -207,8 +218,15 @@ export function createBridge({ onScan, needDetail, onChallenge, shared = () => (
         const id = String(detail.id || (url.match(/(\d{9,})\/detay/) || [])[1] || '');
         if (!id || detail.empty) {
           failedDetail.add(url);
-          return log(`sahibinden detay okunamadı (${id}): "${detail.title || ''}" ${(detail.text || '').slice(0, 120)}`);
+          log(`sahibinden detay okunamadı (${id}): "${(detail.title || '').slice(0, 80)}"`);
+          const dg = detail.diag;
+          if (dg) {
+            log(`sahibinden detay tanı: mobil=${dg.mobile} sınıflar=${(dg.classes || []).join(' ')} öğe=${dg.hit || '-'}`);
+            log(`sahibinden detay tanı html: ${dg.html || '-'}`);
+          }
+          return detailFailed('düzen tanınmadı');
         }
+        detailFails = 0;
         const parsed = parseSahibindenDetail(detail);
         log(`sahibinden detay ${id}: ${detailSummary(parsed)}`);
         if (detailDiag++ < 3) {
@@ -299,6 +317,7 @@ export function createBridge({ onScan, needDetail, onChallenge, shared = () => (
     inflight: inflight?.task || null,
     caps: [...caps],
     sahibindenDetail24h: detailTimes.length,
+    sahibindenDetailPausedUntil: detailPausedUntil > Date.now() ? new Date(detailPausedUntil).toISOString() : undefined,
     last: Object.fromEntries(Object.entries(last).map(([k, v]) => [k, new Date(v).toISOString()])),
   });
 

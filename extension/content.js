@@ -46,6 +46,20 @@
   // Sayfa düzeni değişebileceği için birkaç yoldan okunur; ajan ilk sayfalarda neyin bulunduğunu kaydına yazar.
   const detailId = () => (location.pathname.match(/\/ilan\/.*?(\d{9,})\/detay/) || [])[1];
   const clean = (t) => (t || '').replace(/[ \t ]+/g, ' ').replace(/\s*\n\s*/g, '\n').trim();
+  const LABELS = new Map(['İlan No', 'Marka', 'Seri', 'Model', 'Yıl', 'Yakıt Tipi', 'Vites', 'Araç Durumu', 'KM', 'Kasa Tipi',
+    'Motor Gücü', 'Çekiş', 'Renk', 'Garanti', 'Ağır Hasar Kayıtlı', 'Ağır Hasarlı', 'Kimden', 'Takas', 'Menzil', 'Ortalama Menzil',
+    'Batarya Kapasitesi', 'Pil Kapasitesi', 'Tramer', 'Tramer Tutarı'].map((k) => [k.toLocaleLowerCase('tr-TR'), k]));
+
+  // Okunamayan detay sayfası için tanı: "Ağır hasar" yazısının çevresindeki HTML ve ilgili sınıf adları
+  function detailDiag() {
+    const hit = [...document.body.querySelectorAll('*')].find((e) => !e.childElementCount && /ağır hasar|çekiş|kimden/i.test(e.textContent) && e.textContent.length < 60);
+    let box = hit;
+    for (let i = 0; i < 4 && box?.parentElement; i++) { box = box.parentElement; if (box.childElementCount >= 4) break; }
+    const classes = [...new Set([...document.querySelectorAll('[class]')].flatMap((e) => String(e.className?.baseVal ?? e.className).split(/\s+/))
+      .filter((c) => /classified|info|detail|attr|feature|spec|damage|desc|propert/i.test(c)))].slice(0, 40);
+    return { hit: hit ? hit.outerHTML.slice(0, 200) : null, html: box ? box.outerHTML.replace(/\s+/g, ' ').slice(0, 1500) : null, classes, mobile: innerWidth < 800 };
+  }
+
   function sahibindenDetail() {
     const id = detailId();
     if (!id) return false;
@@ -55,8 +69,24 @@
       const v = clean(li.querySelector('span, .value, dd')?.textContent);
       if (k && k.length < 40 && !(k in props)) props[k] = v.slice(0, 100);
     }
-    if (!Object.keys(props).length) return false;
-    const desc = clean((document.querySelector('#classifiedDescription, .classifiedDescription, [id*="escription"]') || {}).innerText).slice(0, 3000);
+    // Düzenden bağımsız yol: bilinen etiket metnini taşıyan öğenin yanındaki değer
+    // (ör. <div>Ağır Hasar Kayıtlı</div><div>Hayır</div>, <dt>Çekiş</dt><dd>Arkadan İtiş</dd>)
+    for (const el of document.body.querySelectorAll('*')) {
+      if (el.childElementCount || /^(SCRIPT|STYLE|OPTION|A|BUTTON)$/.test(el.tagName)) continue;
+      const label = clean(el.textContent).replace(/:$/, '');
+      const key = label.length < 30 && LABELS.get(label.toLocaleLowerCase('tr-TR'));
+      if (!key || key in props) continue;
+      let v = clean(el.nextElementSibling?.textContent);
+      const pt = clean(el.parentElement?.textContent);
+      if (!v && pt.startsWith(label) && pt.length < label.length + 100) v = pt.slice(label.length);
+      if (!v) v = clean(el.parentElement?.nextElementSibling?.textContent);
+      v = v.replace(/^:\s*/, '');
+      if (v && v.length < 100) props[key] = v;
+    }
+    if (Object.keys(props).length < 2 && !props['Ağır Hasar Kayıtlı']) return false;
+    const descEl = [...document.querySelectorAll('#classifiedDescription, .classifiedDescription, [id*="escription" i], [class*="escription" i]')]
+      .sort((a, b) => (b.innerText || '').length - (a.innerText || '').length)[0];
+    const desc = clean(descEl?.innerText).slice(0, 3000);
     // Boya / değişen: "Orijinal / Lokal Boyalı / Boyalı / Değişmiş" başlıklı parça listeleri
     const LABEL = /^(orijinal|orjinal|lokal boyal[ıi]|boyal[ıi]|de[ğg]i[şs]mi[şs]|de[ğg]i[şs]en|belirtilmemi[şs])( par[çc]alar)?\s*:?$/i;
     const damage = [];
@@ -169,7 +199,7 @@
     if (ok) { diag('okundu ve gönderildi'); return; }
     if (++tries <= 6) setTimeout(attempt, 2500);
     // Detay sayfası okunamadı (ilan kalkmış, düzen değişmiş): ajan beklemesin, başlığı tanı için gönder
-    else if (host === 'www.sahibinden.com' && detailId()) send({ kind: 'sahibindenDetail', detail: { id: detailId(), empty: true, title: document.title.slice(0, 120), text: clean(document.body?.innerText).slice(0, 300) } });
+    else if (host === 'www.sahibinden.com' && detailId()) send({ kind: 'sahibindenDetail', detail: { id: detailId(), empty: true, title: document.title.slice(0, 120), diag: detailDiag() } });
     else diag(`okunamadı: satır=${document.querySelectorAll('.listing-list-item').length} tr=${document.querySelectorAll('tr').length} başlık="${document.title.slice(0, 60)}"`);
   };
   attempt();

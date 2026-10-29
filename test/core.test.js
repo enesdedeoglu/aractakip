@@ -751,3 +751,15 @@ test('birleştirme: detaydaki ağır hasar alanını ağır hasar listesi ezmez;
   assert.equal(after.damage.tramer, 85000);
   assert.ok(after.description);
 });
+
+test('köprü: üst üste 3 okunamayan detay sayfasından sonra detay okuma 12 saat durur', async () => {
+  const many = Array.from({ length: 6 }, (_, i) => `https://www.sahibinden.com/ilan/tesla-13000000${i}0/detay`);
+  const { b } = testBridge({ caps: ['sahibindenDetail'], candidates: many, intervals: { sahibindenDetail: 0 } });
+  for (let i = 0; i < 3; i++) {
+    const u = b.next();
+    assert.ok(u, `${i + 1}. deneme`);
+    await b.page({ url: u, kind: 'sahibindenDetail', detail: { id: u.match(/(\d{9,})/)[1], empty: true, title: 'x', diag: { classes: ['a'], html: '<div>', mobile: false } } });
+  }
+  assert.equal(b.next(), null);
+  assert.ok(b.status().sahibindenDetailPausedUntil);
+});
