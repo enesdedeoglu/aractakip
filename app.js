@@ -498,7 +498,7 @@
       ...Object.entries(mt).filter(([, t]) => t.change != null).map(([m, t]) => `<b>${esc(m)}</b> genel fiyat seviyesi son ${t.days} günde ${pctSigned(t.change)}.`),
     ].filter(Boolean).join(' ');
     const de = state.db.market?.damageEffects;
-    $('#dmgEffects').innerHTML = de ? `<b>Hasarın fiyata etkisi</b> (ilanlardan öğrenilen): ağır hasar kaydı ${pctSigned(de.heavy, 0)} · değişen parça başına ${pctSigned(de.changed)} · boyalı parça başına ${pctSigned(de.painted)} · 100 bin TL tramer ${pctSigned(de.tramer100k)}. ${Object.keys(state.db.market?.optionEffects || {}).length ? `<br><b>Opsiyonların etkisi:</b> ${Object.entries(state.db.market.optionEffects).map(([k, v]) => `${esc(k)} ${pctSigned(v)}`).join(' · ')}. ` : ''}Tahminin genel tipik hatası ±%${((state.db.market.typicalError || 0) * 100).toLocaleString('tr-TR', { maximumFractionDigits: 1 })}.` : '';
+    $('#dmgEffects').innerHTML = de ? `<b>Hasarın fiyata etkisi</b> (ilanlardan öğrenilen): ağır hasar kaydı ${pctSigned(de.heavy, 0)} · değişen parça başına ${pctSigned(de.changed)} · boyalı parça başına ${pctSigned(de.painted)} (kaput ×2, tavan ×3, bagaj kapağı ×1,5, tampon ×0,3) · 100 bin TL tramer ${pctSigned(de.tramer100k)}. ${Object.keys(state.db.market?.optionEffects || {}).length ? `<br><b>Opsiyonların etkisi:</b> ${Object.entries(state.db.market.optionEffects).map(([k, v]) => `${esc(k)} ${pctSigned(v)}`).join(' · ')}. ` : ''}Tahminin genel tipik hatası ±%${((state.db.market.typicalError || 0) * 100).toLocaleString('tr-TR', { maximumFractionDigits: 1 })}.` : '';
   }
 
   // ---------- Yeniden ilan & arşiv ----------
