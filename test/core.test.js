@@ -836,3 +836,16 @@ test('hasar: kaput değişimi tampon değişiminden belirgin daha çok düşür�
   assert.ok(kaput.cautions.some((c) => /Motor kaputu değişmiş – önden darbe/.test(c)));
   assert.ok(!tampon.cautions.some((c) => /önden darbe/.test(c)));
 });
+
+test('sahibinden detayı (2.2.3+): satıcı yazısı ve boya/değişen bölümü ayrı gelir; eski eklentiyle okunanlar yenilenir', () => {
+  const d = parseSahDetail({ ...REAL, desc: 'Uzun satıcı yazısı. Tramer 40 bin.', damageText: 'Boyalı veya Değişen Parça\nOrijinalLokal BoyalıBoyalıDeğişen\nDeğişen Parçalar\nMotor Kaputu (Kırık / Çatlak)\nGüvenlik\nABS' });
+  assert.equal(d.damage.summary, '1 değişen (Motor Kaputu – kırık/çatlak)');
+  assert.equal(d.description, 'Uzun satıcı yazısı. Tramer 40 bin.');
+  assert.equal(d.damage.tramer, 40000);
+  const now = Date.parse('2026-10-30T12:00:00Z');
+  const mk = (id, o) => ({ key: `sahibinden:${id}`, source: 'sahibinden', status: 'active', url: `https://www.sahibinden.com/ilan/tesla-${id}/detay`, firstSeen: '2026-10-01T00:00:00Z', detailAt: 'x', detailV: 4, a: { label: 'Piyasa' }, ...o });
+  const ls = [mk(1, { detailEv: '2.2.2' }), mk(2, { detailEv: '2.2.3' }), mk(3)];
+  assert.deepEqual(detailCandidates(ls, now, '2.2.2'), [], 'eski eklenti bağlıyken yeniden okunmaz');
+  assert.deepEqual(detailCandidates(ls, now, '2.2.3').map((u) => u.match(/tesla-(\d+)/)[1]), ['1', '3']);
+  assert.deepEqual(detailCandidates(ls, now, '2.10.0').length, 2, 'sürüm sayısal karşılaştırılır');
+});

@@ -179,7 +179,8 @@ export function parseDetail(d = {}) {
   }
   // Grup başlıkları bulundu ama parça listeleri okunamadıysa (güncel sayfa düzeni) bölüm metninden okunur
   let known = n.changed + n.painted + n.local + n.original > 0;
-  const fromText = !known ? parseDamageText(d.desc) : null;
+  // 2.2.3+ eklenti bölümü ayrı gönderir (damageText); eskisinde açıklama kutusunun içindeydi
+  const fromText = !known ? parseDamageText(d.damageText) || parseDamageText(d.desc) : null;
   if (fromText) {
     Object.assign(n, fromText, { original: fromText.original ? 1 : 0 });
     known = true;
@@ -244,10 +245,16 @@ export function parseDetail(d = {}) {
  * Detay sayfası okunacak sahibinden ilanları, öncelik sırasıyla: son 2 günde görülen yeni ilanlar (en yenisi
  * önce), sonra değerlendirmesi detaya bağlı olanlar (Fırsat / Şüpheli, versiyonu fiyatla tahmin edilen ucuzlar).
  */
-export function detailCandidates(listings, now = Date.now()) {
+const verNum = (v) => String(v || '0').split('.').reduce((a, x) => a * 1000 + Number(x || 0), 0);
+// Satıcı yazısını ve boya/değişen bölümünü ayrı okuyan ilk eklenti sürümü
+const SPLIT_EV = verNum('2.2.3');
+
+/** @param ev şu an bağlı eklentinin sürümü: daha eski eklentiyle okunmuş detaylar yenisiyle bir kez yeniden okunur */
+export function detailCandidates(listings, now = Date.now(), ev = null) {
   const ok = (l) => l.source === 'sahibinden' && l.status === 'active' && !l.detailAt && /\/ilan\//.test(l.url || '');
   // Eski ayrıştırıcıyla okunmuş detaylar (yeni ilanlardan sonra, en yenisi önce)
-  const stale = listings.filter((l) => l.source === 'sahibinden' && l.status === 'active' && l.detailAt && (l.detailV || 1) < DETAIL_V && /\/ilan\//.test(l.url || ''))
+  const outdated = (l) => (l.detailV || 1) < DETAIL_V || (verNum(ev) >= SPLIT_EV && verNum(l.detailEv) < SPLIT_EV);
+  const stale = listings.filter((l) => l.source === 'sahibinden' && l.status === 'active' && l.detailAt && outdated(l) && /\/ilan\//.test(l.url || ''))
     .sort((a, b) => Date.parse(b.firstSeen) - Date.parse(a.firstSeen));
   const fresh = listings.filter((l) => ok(l) && now - Date.parse(l.firstSeen) < 2 * DAY)
     .sort((a, b) => Date.parse(b.firstSeen) - Date.parse(a.firstSeen));

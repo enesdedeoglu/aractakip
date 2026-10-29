@@ -118,7 +118,7 @@ export function createBridge({ onScan, needDetail, onChallenge, shared = () => (
     if (!caps.has('sahibindenDetail') || !extVersion || detailPausedUntil > Date.now()) return null;
     while (detailTimes.length && Date.now() - detailTimes[0] > 24 * 60 * MIN) detailTimes.shift();
     if (detailTimes.length >= iv.sahibindenDetailPerDay) return null;
-    return needDetail('sahibinden').find(freshDetail) || null;
+    return needDetail('sahibinden', extVersion).find(freshDetail) || null;
   }
 
   function next() {
@@ -242,10 +242,10 @@ export function createBridge({ onScan, needDetail, onChallenge, shared = () => (
         const parsed = parseSahibindenDetail(detail);
         log(`sahibinden detay ${id}: ${detailSummary(parsed)}`);
         if (detailDiag++ < 3) {
-          log(`sahibinden detay tanı: alanlar=${Object.keys(detail.props || {}).join('|')}`);
+          log(`sahibinden detay tanı: alanlar=${Object.keys(detail.props || {}).join('|')} kutular=${(detail.descSources || []).join(' ')}`);
           log(`sahibinden detay tanı: hasar=${JSON.stringify(detail.damage || []).slice(0, 400)} şema=${JSON.stringify((detail.parts || []).slice(0, 6)).slice(0, 300)} kutu=${JSON.stringify(detail.sample || null).slice(0, 300)}`);
         }
-        return onScan({ source: 'sahibinden', listings: [{ source: 'sahibinden', sourceId: id, ...parsed, detailAt: new Date().toISOString() }], complete: false, mode: 'detail' });
+        return onScan({ source: 'sahibinden', listings: [{ source: 'sahibinden', sourceId: id, ...parsed, detailEv: ev || extVersion || undefined, detailAt: new Date().toISOString() }], complete: false, mode: 'detail' });
       }
       if (host.endsWith('sahibinden.com') && rows) {
         const pg = { url, heads, rows };

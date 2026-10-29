@@ -86,7 +86,7 @@ const bridge = createBridge({
       notifyDesktop(`${host} doğrulama istiyor`, 'Tarayıcıdaki Tesla İlan Takip sekmesinde doğrulamayı tamamlayın.');
     }
   },
-  needDetail: (source = 'arabam') => source === 'sahibinden' ? sahibindenDetailCandidates(Object.values(latestDb?.listings || {})) : Object.values(latestDb?.listings || {})
+  needDetail: (source = 'arabam', ev = null) => source === 'sahibinden' ? sahibindenDetailCandidates(Object.values(latestDb?.listings || {}), Date.now(), ev) : Object.values(latestDb?.listings || {})
     .filter((l) => l.source === 'arabam' && l.status === 'active' && !l.detailAt)
     .sort((a, b) => Date.parse(b.firstSeen) - Date.parse(a.firstSeen))
     .map((l) => l.url),

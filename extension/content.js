@@ -85,9 +85,20 @@
       if (v && v.length < 100) props[key] = v;
     }
     if (Object.keys(props).length < 2 && !props['Ağır Hasar Kayıtlı']) return false;
-    const descEl = [...document.querySelectorAll('#classifiedDescription, .classifiedDescription, [id*="escription" i], [class*="escription" i]')]
-      .sort((a, b) => (b.innerText || '').length - (a.innerText || '').length)[0];
-    const desc = clean(descEl?.innerText).slice(0, 3000);
+    // Satıcı yazısı ile "Boyalı veya Değişen Parça" + donanım bölümü ayrı kutularda: ikisi ayrı gönderilir
+    const DMG = /Boyal[ıi]\s+veya\s+De[ğg]i[şs]en\s+Par[çc]a/i;
+    const boxes = [...document.querySelectorAll('#classifiedDescription, .classifiedDescription, [id*="escription" i], [class*="escription" i]')]
+      .map((e) => ({ e, t: clean(e.innerText) })).filter((x) => x.t);
+    const sellerBox = boxes.filter((x) => !DMG.test(x.t)).sort((a, b) => b.t.length - a.t.length)[0];
+    const desc = (sellerBox?.t || '').slice(0, 4000);
+    // Boya/değişen bölümü: başlığını içeren en küçük kutu (yoksa başlığın kapsayıcısı)
+    let dmgBox = boxes.filter((x) => DMG.test(x.t)).sort((a, b) => a.t.length - b.t.length)[0]?.e;
+    if (!dmgBox) {
+      const head = [...document.querySelectorAll('h2, h3, h4, div, span, p')].find((e) => e.childElementCount === 0 && DMG.test(e.textContent) && e.textContent.length < 40);
+      dmgBox = head?.parentElement?.parentElement || head?.parentElement;
+    }
+    const damageText = clean(dmgBox?.innerText).slice(0, 2500);
+    const descSources = boxes.slice(0, 6).map((x) => `${x.e.tagName.toLowerCase()}${x.e.id ? `#${x.e.id}` : ''}.${String(x.e.className).split(/\s+/)[0]}:${x.t.length}${DMG.test(x.t) ? '+hasar' : ''}`);
     // Boya / değişen: "Orijinal / Lokal Boyalı / Boyalı / Değişmiş" başlıklı parça listeleri
     const LABEL = /^(orijinal|orjinal|lokal boyal[ıi]|boyal[ıi]|de[ğg]i[şs]mi[şs]|de[ğg]i[şs]en|belirtilmemi[şs])( par[çc]alar)?\s*:?$/i;
     const damage = [];
@@ -108,7 +119,7 @@
       .map((e) => ({ cls: String(e.className?.baseVal ?? e.className).slice(0, 60), text: clean(e.getAttribute('title') || e.textContent).slice(0, 40) }))
       .filter((p) => /paint|boya|chang|degis|değiş|local|lokal|orig|orij/i.test(p.cls)) : [];
     send({ kind: 'sahibindenDetail', detail: {
-      id, props, desc, damage, parts: parts.slice(0, 40),
+      id, props, desc, damageText, descSources, damage, parts: parts.slice(0, 40),
       sample: box ? { cls: String(box.className?.baseVal ?? box.className).slice(0, 80), text: clean(box.textContent).slice(0, 400) } : null,
     } });
     return true;
