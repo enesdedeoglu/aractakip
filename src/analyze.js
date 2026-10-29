@@ -23,6 +23,14 @@ const DAMAGE_FEATURES = [
   ['boya', Math.log(0.985), 6], // boyalı parça (lokal boya yarım sayılır)
   ['tramer', Math.log(0.97), 6], // log(1 + tramer / 100 bin TL)
 ];
+// Pahalı opsiyonlar (başlık + açıklamadaki etiketlerden), ön bilgiyle; ilan arttıkça veriden öğrenilir.
+// Başlıklarda (Ekim 2026) EAP ~+%2, FSD ~+%1,5, Quicksilver ~+%2, beyaz iç ~+%1,5, PPF ~+%0,5 görüldü.
+const OPTION_FEATURES = [
+  ['otopilot paketi', (t) => t.includes('EAP') || t.includes('FSD'), Math.log(1.02), 6],
+  ['özel renk', (t) => t.includes('Quicksilver') || t.includes('Ultra kırmızı'), Math.log(1.015), 6],
+  ['beyaz iç', (t) => t.includes('Beyaz iç'), Math.log(1.01), 6],
+  ['PPF', (t) => t.includes('PPF'), Math.log(1.005), 6],
+];
 // Sıfır fiyatı: model yılı bu yıl, ~1000 km'lik ilan gibi, 3 ilan ağırlığında. Teslimat aylar sürdüğü için
 // sıfıra yakın ikinci el, sıfır fiyatı civarında ilana çıkıyor (Ekim 2026: Standart ve Long Range RWD ≈ %100).
 const ANCHOR_WEIGHT = 3;
@@ -102,11 +110,12 @@ function kmImputer(rows) {
 
 const BASE = ['1', 'yıl', 'km', 'km²', 'ağır hasar'];
 const DMG0 = BASE.length; // hasar özelliklerinin başladığı sütun
+const OPT0 = DMG0 + DAMAGE_FEATURES.length; // opsiyonların başladığı sütun
 
 function buildFeatures(rows, imputeKm) {
-  const names = [...BASE, ...DAMAGE_FEATURES.map(([n]) => n)];
-  const pen = [1e-6, 1e-3, 1e-3, 0.5, HEAVY_WEIGHT, ...DAMAGE_FEATURES.map(([, , w]) => w)];
-  const prior = [0, 0, 0, 0, HEAVY_PRIOR, ...DAMAGE_FEATURES.map(([, p]) => p)];
+  const names = [...BASE, ...DAMAGE_FEATURES.map(([n]) => n), ...OPTION_FEATURES.map(([n]) => n)];
+  const pen = [1e-6, 1e-3, 1e-3, 0.5, HEAVY_WEIGHT, ...DAMAGE_FEATURES.map(([, , w]) => w), ...OPTION_FEATURES.map(([, , , w]) => w)];
+  const prior = [0, 0, 0, 0, HEAVY_PRIOR, ...DAMAGE_FEATURES.map(([, p]) => p), ...OPTION_FEATURES.map(([, , p]) => p)];
   const index = new Map();
   for (const [lvl, key, lambda] of LEVELS) for (const r of rows) {
     const id = `${lvl}:${key(r)}`;
@@ -122,6 +131,8 @@ function buildFeatures(rows, imputeKm) {
       x[4] = isHeavy(r) ? 1 : 0;
       x[DMG0] = dc.changed; x[DMG0 + 1] = dc.paint; x[DMG0 + 2] = Math.log1p(dc.tramer / 100000);
     }
+    const tags = r.c.tags || [];
+    OPTION_FEATURES.forEach(([, has], i) => { x[OPT0 + i] = has(tags) ? 1 : 0; });
     for (const [lvl, key] of LEVELS) {
       const i = index.get(`${lvl}:${key(r)}`);
       if (i != null) x[i] = 1;
@@ -223,6 +234,8 @@ export function buildMarket(listings, { newPrices = {}, year = new Date().getFul
     heavyEffect: eff(4),
     // Hasarın fiyata etkisi (veriden öğrenilen, ön bilgiyle): parça / 100 bin TL tramer başına
     damageEffects: { heavy: eff(4), changed: eff(DMG0), painted: eff(DMG0 + 1), tramer100k: Math.exp(m.beta[DMG0 + 2] * Math.log(2)) - 1 },
+    optionEffects: Object.fromEntries(OPTION_FEATURES.map(([n], i) => [n, eff(OPT0 + i)])),
+    optionOf: (l) => OPTION_FEATURES.map(([n, has], i) => [n, has(l.c?.tags || []) ? eff(OPT0 + i) : 0]).filter(([, e]) => e),
     names,
   };
 }
@@ -278,6 +291,7 @@ export function resolveTrims(listings, market) {
 }
 
 const NF0 = new Intl.NumberFormat('tr-TR');
+const NF1 = new Intl.NumberFormat('tr-TR', { maximumFractionDigits: 1 });
 function fmtTL(n) {
   return n == null ? '-' : `${NF0.format(Math.round(n))} TL`;
 }
@@ -427,6 +441,8 @@ export function analyzeListing(l, market, all, { sale = null } = {}) {
     const parts = [dc.changed && `${dc.changed} değişen`, dc.painted && `${dc.painted} boyalı`, dc.local && `${dc.local} lokal boyalı`, dc.tramer && `tramer ${fmtM(dc.tramer)}`].filter(Boolean).join(', ');
     reasons.push(`Hasar durumu fiyata yansıtıldı (${parts}): beklenen fiyat hasarsız eşdeğerinden %${Math.abs(damageDiscount * 100).toFixed(0)} düşük (hasarsız ≈ ${fmtTL(expectedClean)})`);
   }
+  const opts = market?.optionOf(l).filter(([, e]) => Math.abs(e) >= 0.005) || [];
+  if (opts.length) reasons.push(`Opsiyonlar beklenen fiyata eklendi: ${opts.map(([n, e]) => `${n} ${e > 0 ? '+' : '−'}%${NF1.format(Math.abs(e * 100))}`).join(', ')}`);
   if (d.tramer > 0) {
     const ratio = d.tramer / (expectedClean || l.price);
     score -= Math.min(20, ratio * 150);
@@ -442,6 +458,7 @@ export function analyzeListing(l, market, all, { sale = null } = {}) {
     if (w !== HEAVY) score -= 12;
     cautions.push(`İlan metninde: "${w}"`);
   }
+  for (const n of l.c.notes || []) cautions.push(n);
   if (l.c.heavyFrom) cautions.push(`Aynı aracın ${l.c.heavyFrom} ilanında ağır hasar kayıtlı görünüyordu – bu ilanda kayıt "yok" görünse de ağır hasarlı sayıldı`);
 
   // Satıcı
@@ -605,6 +622,7 @@ export function marketSummary(listings, market = null, { sale = null, all = list
   const removed30 = listings.filter((l) => l.status === 'removed' && now - Date.parse(l.removedAt) < 30 * DAY);
   const r3 = (x) => Math.round(x * 1000) / 1000;
   const damageEffects = market ? Object.fromEntries(Object.entries(market.damageEffects).map(([k, v]) => [k, r3(v)])) : undefined;
+  const optionEffects = market ? Object.fromEntries(Object.entries(market.optionEffects).map(([k, v]) => [k, r3(v)])) : undefined;
   const modelTrends = Object.fromEntries(Object.entries(trends).filter(([k]) => k.endsWith(' · Tümü')).map(([k, v]) => [k.replace(' · Tümü', ''), v]));
-  return { segments, removed30d: removed30.length, activeCount: active.length, damageEffects, typicalError: market ? r3(market.sigmaAll * 0.6745) : undefined, sale: sale || undefined, trends: modelTrends };
+  return { segments, removed30d: removed30.length, activeCount: active.length, damageEffects, optionEffects, typicalError: market ? r3(market.sigmaAll * 0.6745) : undefined, sale: sale || undefined, trends: modelTrends };
 }

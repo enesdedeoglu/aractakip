@@ -104,7 +104,7 @@ export function detectTrim(model, text, ctx = {}) {
 
 const TAG_RULES = [
   ['FSD', /\bfsd\b|full\s*self|tam\s*otonom/],
-  ['EAP', /\beap\b|enhanced\s*auto|gelismis\s*otopilot/],
+  ['EAP', /\beap\b|enhanced\s*auto|gelis(tiril)?mis\s*oto\s*pilot/],
   ['HW4', /\bhw\s*4\b|hardware\s*4/],
   ['PPF', /\bppf\b|seffaf\s*kaplama/],
   ['Garantili', /garanti(?!si?z|(si)?\s*(yok|bitti|bitmis|dolmus|dolmustur))/],
@@ -117,6 +117,9 @@ const TAG_RULES = [
   ['Krediye uygun', /kredi/],
   ['Acil', /\bacil\b/],
   ['Beyaz iç', /beyaz\s*(ic|koltuk|doseme)/],
+  ['Quicksilver', /quick\s*silver/],
+  ['Ultra kırmızı', /ultra\s*(red|kirmizi)/],
+  ['20" jant', /20\s*(inc|inch|"|''|'|\s*jant)/],
   ['Çekme demiri', /ceki\s*demir|cekme\s*demir/],
 ];
 
@@ -130,17 +133,19 @@ const DAMAGE_RULES = [
 // Olumsuzluk, hasar ifadesinin hemen ardından gelmeli ("ağır hasar kaydı yok", "pert değildir",
 // "ağır hasar: hayır", "ağır hasar ve tramer kaydı yoktur"). Arada yalnızca "kaydı / kayıtlı / bilgisi"
 // gibi dolgu sözcükleri olabilir; "ağır hasar kayıtlı, değişen yok" ya da "hasarlı tramer yok" olumludur.
-const FILLER = new Set(['i', 'li', 'si', 'kaydi', 'kayit', 'kayitli', 'kaydida', 'kayitlari', 'bilgisi', 'durumu', 'sorgusu', 'gecmisi',
+const FILLER = new Set(['i', 'li', 'si', 'kaydi', 'kayit', 'kayitli', 'kaydida', 'kayitlari', 'bilgisi', 'durumu', 'sorgusu', 'gecmisi', 'parca', 'parcasi', 'parcalar', 'parcalari',
   'mevcut', 'hicbir', 'kesinlikle', 'asla', 'olarak', 've', 'veya', 'ya', 'da', 'de']);
 const AFTER_CONJ = new Set(['tramer', 'boya', 'degisen', 'kaza', 'hasar']); // yalnızca "ve / veya"dan sonra dolgu sayılır
 const NEG = /^(yok|degil|bulunma|bulunmu|olmayan|olmad|olmam|hayir|kayitsiz|temiz)/;
+// Açıklamalardaki kalıp cümleler: "ağır hasar sorgusu yapılabilir", "tramer ve hasar kaydı kontrol edilebilir"
+const NEUTRAL = /^(sorgu|sorgula|kontrol|bak|yapil|yapab|test|rapor|ekspert|ogren|incele|gosteril|ulas)/;
 
 function negatedAfter(rest) {
   const toks = rest.slice(0, 80).split(/[^\p{L}\p{N}]+/u).filter(Boolean);
   let prev = null;
   for (let i = 0; i < toks.length && i < 5; i++) {
     const w = toks[i];
-    if (NEG.test(w)) return true;
+    if (NEG.test(w) || NEUTRAL.test(w)) return true;
     const filler = FILLER.has(w) || (AFTER_CONJ.has(w) && ['ve', 'veya', 'da'].includes(prev));
     if (!filler) return false;
     prev = w;
@@ -190,6 +195,20 @@ export function classify(l) {
     trimAlt = ['Standart', 'Long Range RWD'];
   }
   const { tags, warnings } = detectTags(`${l.title || ''} ${l.description || ''}`);
+  // Açıklamadaki hasar ifadeleri: ilanın yapılandırılmış alanları (ağır hasar Evet/Hayır, boya-değişen listesi)
+  // daha güvenilir. Alan "Hayır" diyorsa açıklamadaki "ağır hasar" yalnızca not olarak gösterilir.
+  const notes = [];
+  if (l.description) {
+    const fromTitle = detectTags(l.title || '').warnings;
+    for (const w of warnings.filter((x) => !fromTitle.includes(x))) {
+      const structured = w === 'Ağır hasar kayıtlı' ? l.damage?.heavy === false : !!l.damage?.summary;
+      if (!structured) continue;
+      warnings.splice(warnings.indexOf(w), 1);
+      notes.push(w === 'Ağır hasar kayıtlı'
+        ? 'Açıklamada "ağır hasar" geçiyor ama ilanın Ağır Hasar Kayıtlı alanı "Hayır" – açıklamayı okuyun'
+        : `Açıklamada "${w}" geçiyor – boya/değişen listesini kontrol edin`);
+    }
+  }
   if (l.damage?.original) {
     for (const t of ['Boyasız', 'Değişensiz']) if (!tags.includes(t)) tags.push(t);
   }
@@ -207,5 +226,6 @@ export function classify(l) {
     kmBand,
     tags,
     warnings: [...new Set(warnings)],
+    notes: notes.length ? notes : undefined,
   };
 }

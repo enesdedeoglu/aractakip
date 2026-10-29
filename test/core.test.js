@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { classify } from '../src/classify.js';
+import { parseDescription } from '../src/describe.js';
 import { kmFromTitle } from '../src/sources/arabam.js';
 import { normalize } from '../src/sources/sahibinden.js';
 import { mergeScans } from '../src/merge.js';
@@ -93,6 +94,34 @@ test('ağır hasar ifadeleri Türkçe karaktersiz ve ardında başka "yok" olsa 
   assert.ok(heavy('PERT KAYITLI'));
   assert.ok(heavy('ÇEKME BELGELİ'));
   assert.ok(!heavy('pertsiz garantili'));
+});
+
+test('açıklama: tramer tutarı farklı yazımlarla okunur, sayı olmayan ifadeler karışmaz', () => {
+  const tr = (t) => parseDescription(t).tramer;
+  assert.equal(tr('Tramer 85 bin, boya yok'), 85000);
+  assert.equal(tr('aracın 12.500 TL tramer kaydı vardır'), 12500);
+  assert.equal(tr('TRAMER KAYDI: 145.000 TL'), 145000);
+  assert.equal(tr('2 parça boya 40 bin tramer'), 40000);
+  assert.equal(tr('85k tramerli'), 85000);
+  assert.equal(tr('Tramer: 1,2 milyon'), 1200000);
+  assert.equal(tr('tramersiz hatasız'), 0);
+  assert.equal(tr('45.000 km, tramer kaydı yoktur'), 0);
+  assert.equal(tr('2024 tramer sorgusu yapılabilir'), null);
+  assert.equal(tr('Kaporta 3 parça değişen tramer 2 parça'), null);
+  assert.equal(tr(''), null);
+});
+
+test('açıklama: opsiyon etiketleri ve kalıp cümleler ağır hasar sayılmaz', () => {
+  const c = (description, o = {}) => classify({ modelRaw: 'Tesla Model Y Premium (Juniper)', year: 2025, title: 'TESLA', description, ...o });
+  assert.deepEqual(c('Ağır hasar sorgusu yapılabilir. Tramer ve hasar kaydı kontrol edilebilir.').warnings, []);
+  assert.deepEqual(c('Hasarlı parçası yoktur, ekspertiz raporu mevcut').warnings, []);
+  assert.ok(c('Araç ağır hasar kayıtlıdır, onarımı yapıldı').warnings.includes('Ağır hasar kayıtlı'));
+  const tags = c('Geliştirilmiş oto pilot, Quicksilver renk, 20 inç jant, komple PPF, beyaz iç').tags;
+  for (const t of ['EAP', 'Quicksilver', '20" jant', 'PPF', 'Beyaz iç']) assert.ok(tags.includes(t), t);
+  // Yapılandırılmış alan "Hayır" diyorsa açıklamadaki "ağır hasar" yalnızca not
+  const n = c('ağır hasar kayıtlı', { damage: { heavy: false } });
+  assert.deepEqual(n.warnings, []);
+  assert.match(n.notes[0], /Ağır Hasar Kayıtlı alanı "Hayır"/);
 });
 
 test('başlıktan km', () => {
@@ -392,6 +421,15 @@ test('hasar durumuna göre fiyat: değişen/boya/tramer beklenen fiyatı düşü
   assert.ok(db.market.damageEffects.changed < 0 && db.market.damageEffects.heavy < -0.1);
   assert.deepEqual([93, 110, 86, 40, 100, 120, 47].map(pctOf), ["%93'ü", "%110'u", "%86'sı", "%40'ı", "%100'ü", "%120'si", "%47'si"]);
   assert.deepEqual(damageCounts({ summary: '1 değişen, 1 boyalı, 2 lokal boyalı' }), { changed: 1, painted: 1, local: 2, paint: 2, tramer: 0 });
+});
+
+test('fiyat modeli: pahalı opsiyonlar beklenen fiyatı artırır ve kartta gösterilir', () => {
+  const mk = (id, title) => ({ key: `sahibinden:6${id}`, sourceId: `6${id}`, modelRaw: 'Tesla Model Y Premium (Juniper)', year: 2025, km: 20000, price: 2950000, title });
+  const db = market([mk(1, 'TESLA'), mk(2, 'TESLA EAP QUICKSILVER')]);
+  const plain = db.listings['sahibinden:61'].a, rich = db.listings['sahibinden:62'].a;
+  assert.ok(rich.expected > plain.expected * 1.025, `${rich.expected} > ${plain.expected}`);
+  assert.ok(rich.reasons.some((r) => /Opsiyonlar beklenen fiyata eklendi: otopilot paketi \+%\d/.test(r)));
+  assert.ok(db.market.optionEffects['otopilot paketi'] > 0);
 });
 
 test('ağır hasar geçmişi: aynı aracın diğer sitedeki (kalkmış) ilanı ağır hasarlıysa bu ilan da sayılır', () => {
