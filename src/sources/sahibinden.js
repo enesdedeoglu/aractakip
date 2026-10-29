@@ -229,6 +229,7 @@ export function parseDetail(d = {}) {
     changed: groups ? n.changed > 0 : null,
     tramer,
     tramerFrom: tramer != null ? (tramerProp ? 'ilan' : 'açıklama') : null,
+    parts: fromText?.parts?.length ? fromText.parts : null,
   }).filter(([, v]) => v != null));
   // Açıklama boşsa da yazılır ki önceki (hatalı okunmuş) açıklama kalmasın
   const out = { damage, specs, description: seller.slice(0, 1500), detailV: DETAIL_V };

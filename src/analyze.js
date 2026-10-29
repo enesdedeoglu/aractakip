@@ -19,8 +19,8 @@ const HEAVY_WEIGHT = 4;
 // Boya / değişen / tramer etkisi için ön bilgi (birim başına log fiyat etkisi, kaç ilan ağırlığında).
 // Gerçek ilanlarda (Ekim 2026) değişen parça başına ~%3-5, boyalı parça başına ~%2-4 düşüş görüldü.
 const DAMAGE_FEATURES = [
-  ['değişen', Math.log(0.97), 6], // değişen parça sayısı
-  ['boya', Math.log(0.985), 6], // boyalı parça (lokal boya yarım sayılır)
+  ['değişen', Math.log(0.97), 6], // değişen parça (ağırlıklı: kaput 2, tavan 3, tampon 0,3)
+  ['boya', Math.log(0.985), 6], // boyalı parça (ağırlıklı; lokal boya yarım sayılır)
   ['tramer', Math.log(0.97), 6], // log(1 + tramer / 100 bin TL)
 ];
 // Pahalı opsiyonlar (başlık + açıklamadaki etiketlerden), ön bilgiyle; ilan arttıkça veriden öğrenilir.
@@ -54,17 +54,38 @@ const LEVELS = [
 
 export const isHeavy = (l) => l.c?.heavy === 'var' || l.damage?.heavy === true || (l.c?.warnings || []).includes(HEAVY);
 
-/** Ekspertiz özetinden ("3 değişen, 1 lokal boyalı") boya/değişen sayıları ve tramer */
+// Parçanın fiyat etkisi için ağırlığı (standart kaporta parçası = 1). Kaput değişimi önden darbe, tavan değişimi
+// yapısal hasar işaretidir; alıcılar bunlarda çok daha fazla indirim ister. Tampon plastiktir ve sık değişir.
+export const PART_WEIGHT = { 'Tavan': 3, 'Motor Kaputu': 2, 'Kaput': 2, 'Bagaj Kapağı': 1.5, 'Ön Tampon': 0.3, 'Arka Tampon': 0.3 };
+const SERIOUS = { 'Tavan': 'Tavan değişmiş – yapısal hasar işareti (takla/üstten darbe olabilir); kapsamlı ekspertiz şart',
+  'Motor Kaputu': 'Motor kaputu değişmiş – önden darbe izi; ön podye, şasi, radar/kamera ve hava yastığı kontrolü yaptırın' };
+SERIOUS['Kaput'] = SERIOUS['Motor Kaputu'];
+
+/**
+ * Ekspertiz bilgisinden boya/değişen ve tramer. Parça listesi varsa (sahibinden detayı) parçalar ağırlıklandırılır
+ * (changedW, paintW); yoksa özetteki sayılar ("3 değişen, 1 lokal boyalı") ağırlık 1 ile kullanılır.
+ */
 export function damageCounts(d = {}) {
   const s = fold(d?.summary || '');
   const n = (re) => [...s.matchAll(re)].reduce((a, m) => a + Number(m[1]), 0);
   let changed = n(/(\d+)\s*(?:parca\s*)?degisen/g);
   let painted = n(/(\d+)\s*(?:parca\s*)?boyali/g);
-  const local = n(/(\d+)\s*(?:parca\s*)?lokal\s*boyali/g);
+  let local = n(/(\d+)\s*(?:parca\s*)?lokal\s*boyali/g);
   if (!changed && d?.changed) changed = 1;
   if (!painted && !local && d?.painted) painted = 1;
+  const parts = Array.isArray(d?.parts) ? d.parts : [];
+  const w = (kind) => parts.filter((p) => p.kind === kind).reduce((a, p) => a + (PART_WEIGHT[p.part] ?? 1), 0);
+  let changedW = changed, paintW = painted + local / 2;
+  if (parts.length) {
+    changed = parts.filter((p) => p.kind === 'changed').length;
+    painted = parts.filter((p) => p.kind === 'painted').length;
+    local = parts.filter((p) => p.kind === 'local').length;
+    changedW = w('changed');
+    paintW = w('painted') + w('local') / 2;
+  }
   const tramer = d?.tramer > 0 ? d.tramer : 0;
-  return { changed: Math.min(changed, 6), painted, local, paint: Math.min(painted + local / 2, 8), tramer };
+  const serious = parts.filter((p) => p.kind === 'changed' && SERIOUS[p.part]).map((p) => SERIOUS[p.part]);
+  return { changed, painted, local, changedW: Math.min(changedW, 8), paintW: Math.min(paintW, 8), tramer, serious: [...new Set(serious)] };
 }
 
 function median(arr) {
@@ -129,7 +150,7 @@ function buildFeatures(rows, imputeKm) {
     if (!clean) {
       const dc = damageCounts(r.damage);
       x[4] = isHeavy(r) ? 1 : 0;
-      x[DMG0] = dc.changed; x[DMG0 + 1] = dc.paint; x[DMG0 + 2] = Math.log1p(dc.tramer / 100000);
+      x[DMG0] = dc.changedW; x[DMG0 + 1] = dc.paintW; x[DMG0 + 2] = Math.log1p(dc.tramer / 100000);
     }
     const tags = r.c.tags || [];
     OPTION_FEATURES.forEach(([, has], i) => { x[OPT0 + i] = has(tags) ? 1 : 0; });
@@ -438,7 +459,7 @@ export function analyzeListing(l, market, all, { sale = null } = {}) {
     score -= 8;
     cautions.push(`Ağır hasar kayıtlı – ${expectedClean ? `fiyat ağır hasarlı araçlara göre değerlendirildi (hasarsız eşdeğeri ≈ ${fmtTL(expectedClean)}); ` : ''}sigorta, kredi ve tekrar satışta sorun olabilir`);
   } else if (damageDiscount < -0.01) {
-    const parts = [dc.changed && `${dc.changed} değişen`, dc.painted && `${dc.painted} boyalı`, dc.local && `${dc.local} lokal boyalı`, dc.tramer && `tramer ${fmtM(dc.tramer)}`].filter(Boolean).join(', ');
+    const parts = [d.parts?.length ? d.summary : [dc.changed && `${dc.changed} değişen`, dc.painted && `${dc.painted} boyalı`, dc.local && `${dc.local} lokal boyalı`].filter(Boolean).join(', '), dc.tramer && `tramer ${fmtM(dc.tramer)}`].filter(Boolean).join(', ');
     reasons.push(`Hasar durumu fiyata yansıtıldı (${parts}): beklenen fiyat hasarsız eşdeğerinden %${Math.abs(damageDiscount * 100).toFixed(0)} düşük (hasarsız ≈ ${fmtTL(expectedClean)})`);
   }
   const opts = market?.optionOf(l).filter(([, e]) => Math.abs(e) >= 0.005) || [];
@@ -450,8 +471,9 @@ export function analyzeListing(l, market, all, { sale = null } = {}) {
     // Aracın değerinin dörtte biri kadar tramer: kayıt "yok" görünse de ağır hasar niteliğinde
     if (!heavy && ratio >= 0.25) cautions.push(`Tramer, aracın hasarsız değerinin ${pctOf(ratio * 100)} – ağır hasar kaydı görünmese de ağır hasarlı olabilir; şasi numarasıyla sorgulayın`);
   } else if (d.tramer === 0) { score += 3; reasons.push('Tramer kaydı yok'); }
+  for (const w of dc.serious) { score -= 6; cautions.push(w); }
   if (d.original) { score += 5; reasons.push('Boyasız, değişensiz'); }
-  else if (d.painted || d.changed || dc.changed || dc.paint) { score -= 6; cautions.push(d.summary || 'Boyalı/değişen parça var'); }
+  else if (d.painted || d.changed || dc.changed || dc.painted || dc.local) { score -= 6; cautions.push(d.summary || 'Boyalı/değişen parça var'); }
   else if (d.summary && !/orjinal|orijinal/i.test(d.summary)) cautions.push(`Boya/değişen: ${d.summary}`);
   for (const w of l.c.warnings) {
     if (w === HEAVY && (d.heavy || l.c.heavyFrom)) continue;

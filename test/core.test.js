@@ -420,7 +420,7 @@ test('hasar durumuna göre fiyat: değişen/boya/tramer beklenen fiyatı düşü
   assert.equal(clean.expectedClean, undefined);
   assert.ok(db.market.damageEffects.changed < 0 && db.market.damageEffects.heavy < -0.1);
   assert.deepEqual([93, 110, 86, 40, 100, 120, 47].map(pctOf), ["%93'ü", "%110'u", "%86'sı", "%40'ı", "%100'ü", "%120'si", "%47'si"]);
-  assert.deepEqual(damageCounts({ summary: '1 değişen, 1 boyalı, 2 lokal boyalı' }), { changed: 1, painted: 1, local: 2, paint: 2, tramer: 0 });
+  assert.deepEqual(damageCounts({ summary: '1 değişen, 1 boyalı, 2 lokal boyalı' }), { changed: 1, painted: 1, local: 2, changedW: 1, paintW: 2, tramer: 0, serious: [] });
 });
 
 test('fiyat modeli: pahalı opsiyonlar beklenen fiyatı artırır ve kartta gösterilir', () => {
@@ -668,7 +668,7 @@ test('sahibinden detayı: ağır hasar alanı, boya/değişen grupları, açıkl
   assert.equal(d.sellerType, 'galeri');
   assert.equal(d.warranty, 'Garantili');
   assert.match(d.description, /^Araç hatasızdır/);
-  assert.deepEqual(damageCounts(d.damage), { changed: 0, painted: 2, local: 1, paint: 2.5, tramer: 85000 });
+  assert.deepEqual(damageCounts(d.damage), { changed: 0, painted: 2, local: 1, changedW: 0, paintW: 2.5, tramer: 85000, serious: [] });
   // Hepsi orijinal; ağır hasar "Evet"
   const o = parseSahDetail({ props: { 'Ağır Hasar Kayıtlı': 'Evet' }, damage: [{ label: 'Orijinal', items: ['Tavan'] }, { label: 'Boyalı', items: [] }] });
   assert.deepEqual([o.damage.heavy, o.damage.summary, o.damage.original], [true, 'Tamamı orjinal', true]);
@@ -820,5 +820,19 @@ test('sahibinden detayı: parça adları ve hasar nedeni ("Kırık / Çatlak") �
   const desc = 'Boyalı veya Değişen Parça\nOrijinal\nLokal Boyalı\nBoyalı\nDeğişen\nD\nD\nD\nDeğişen Parçalar\nÖn Tampon (Kırık / Çatlak)\nMotor Kaputu (Kırık / Çatlak)\nSol Ön Çamurluk (Kırık / Çatlak)\nGüvenlik\nABS';
   const d = parseSahDetail({ ...REAL, desc });
   assert.equal(d.damage.summary, '3 değişen (Ön Tampon, Motor Kaputu, Sol Ön Çamurluk – kırık/çatlak)');
-  assert.deepEqual(damageCounts(d.damage), { changed: 3, painted: 0, local: 0, paint: 0, tramer: 0 });
+  const dc = damageCounts(d.damage);
+  assert.deepEqual([dc.changed, dc.changedW], [3, 3.3], 'tampon 0,3 + kaput 2 + çamurluk 1');
+  assert.match(dc.serious[0], /Motor kaputu değişmiş/);
+});
+
+test('hasar: kaput değişimi tampon değişiminden belirgin daha çok düşürür, kartta uyarı çıkar', () => {
+  const dmg = (part) => ({ summary: `1 değişen (${part})`, changed: true, parts: [{ part, kind: 'changed' }] });
+  const mk = (id, part) => ({ key: `arabam:7${id}`, sourceId: `7${id}`, modelRaw: 'Tesla Model Y Premium (Juniper)', year: 2025, km: 20000, price: 2900000, damage: dmg(part) });
+  const db = market([mk(1, 'Ön Tampon'), mk(2, 'Motor Kaputu'), mk(3, 'Tavan')]);
+  const [tampon, kaput, tavan] = ['arabam:71', 'arabam:72', 'arabam:73'].map((k) => db.listings[k].a);
+  // Bu yapay piyasada hasarlılar hasarsız fiyatına satıldığı için etkiler ön bilgiden küçük; oran korunur
+  assert.ok(kaput.damageDiscount < -0.02 && (tampon.damageDiscount ?? 0) > kaput.damageDiscount / 3, `kaput ${kaput.damageDiscount} / tampon ${tampon.damageDiscount}`);
+  assert.ok(tavan.damageDiscount < kaput.damageDiscount);
+  assert.ok(kaput.cautions.some((c) => /Motor kaputu değişmiş – önden darbe/.test(c)));
+  assert.ok(!tampon.cautions.some((c) => /önden darbe/.test(c)));
 });

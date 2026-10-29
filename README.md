@@ -144,7 +144,9 @@ STORE=fs npm run scan   # GitHub yerine yerel dosyaya yaz (geliştirme)
   arası)": benzer ilanların ~%80'i bu aralıktadır; az ilanlı versiyonda ve ağır hasarlıda geniştir.
 - **Hasar durumuna göre fiyat:** ağır hasar, değişen/boyalı parça sayısı ve tramer tutarının etkisi ilanlardan öğrenilir
   (Ekim 2026: ağır hasar ≈ −%24, değişen parça başına ≈ −%3, boyalı parça ≈ −%1, 100 bin TL tramer ≈ −%2,4). Hasarlı aracın
-  beklenen fiyatı buna göre düşürülür, hasarsız eşdeğeri ayrıca gösterilir.
+  beklenen fiyatı buna göre düşürülür, hasarsız eşdeğeri ayrıca gösterilir. Parça adı biliniyorsa (sahibinden boya/değişen
+  bölümü) parçalar ağırlıklandırılır: kaput ×2 (önden darbe izi), tavan ×3 (yapısal hasar), bagaj kapağı ×1,5, tampon ×0,3;
+  kaput veya tavan değişmişse kartta ayrıca uyarı çıkar.
 - **Ağır hasar:** arabam ve sahibinden detayı (Ağır Hasarlı / Ağır Hasar Kayıtlı: Evet/Hayır), sahibinden "Ağır Hasar Kayıtlı" filtreli liste ve ilan metni
   ("ağır hasar", "pert", "çekme belgeli"; Türkçe karaktersiz yazımlar dahil, "ağır hasar kaydı yok" gibi olumsuzlar hariç).
   Aynı aracın bir sitesinde (kalkmış olsa da) ya da önceki ilanında ağır hasar yazıyorsa diğer ilandaki "yok" bilgisi bunu
