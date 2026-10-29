@@ -86,6 +86,8 @@ export function normalize(pages) {
 
 // ---------- İlan detay sayfası ----------
 const DAY = 86400000;
+// Ayrıştırıcı sürümü: eski sürümle okunmuş detaylar bir kez yeniden okunur
+export const DETAIL_V = 2;
 const GROUPS = [
   ['changed', /^de[gğ]i[sş](mi[sş]|en)/],
   ['local', /^lokal/],
@@ -93,6 +95,47 @@ const GROUPS = [
   ['original', /^or[ij]+inal|^orjinal/],
   ['unknown', /^belirtilmemi/],
 ];
+
+// sahibinden'in açıklama kutusu satıcı yazısından sonra "Boyalı veya Değişen Parça" bölümünü ve tüm donanım
+// listesini (seçili olmayanlar dahil) içeriyor. Satıcı yazısı bu bölümden önceki kısımdır.
+const DAMAGE_HEAD = /Boyal[ıi]\s+veya\s+De[ğg]i[şs]en\s+Par[çc]a/i;
+const FEATURES_HEAD = /(^|\n|\s)G[üu]venlik\s+ABS\b/;
+export function sellerText(desc) {
+  let t = desc || '';
+  const i = t.search(DAMAGE_HEAD);
+  if (i >= 0) t = t.slice(0, i);
+  const j = t.search(FEATURES_HEAD);
+  if (j >= 0) t = t.slice(0, j);
+  return t.replace(/\s+/g, ' ').trim();
+}
+
+// Kaporta parçaları (uzun adlar önce: "motor kaputu" içindeki "kaput" ayrıca sayılmasın)
+const PARTS = ['motor kaputu', 'sag on camurluk', 'sol on camurluk', 'sag arka camurluk', 'sol arka camurluk', 'sag on kapi', 'sol on kapi',
+  'sag arka kapi', 'sol arka kapi', 'bagaj kapagi', 'on tampon', 'arka tampon', 'tavan', 'kaput'];
+const PART_RE = new RegExp(PARTS.join('|'), 'g');
+
+/**
+ * Açıklama kutusundaki boya/değişen bölümü: "Değişen Parçalar Motor Kaputu Sağ Ön Çamurluk" ya da
+ * "Aracın tüm parçaları orijinaldır". @returns { changed, painted, local, original } | null (bölüm yok)
+ */
+export function parseDamageText(desc) {
+  const t = fold(desc || '').replace(/\s+/g, ' ');
+  const i = t.search(/boyali veya degisen parca/);
+  if (i < 0) return null;
+  let sec = t.slice(i + 'boyali veya degisen parca'.length);
+  const end = sec.search(/\b(guvenlik abs|ic donanim|dis donanim|multimedya)\b/);
+  if (end >= 0) sec = sec.slice(0, end);
+  if (/tum parcalari orijinal/.test(sec)) return { changed: 0, painted: 0, local: 0, original: true };
+  const n = { changed: 0, painted: 0, local: 0 };
+  const heads = [...sec.matchAll(/(lokal boyali|boyali|degisen|degismis) parcalar/g)];
+  if (!heads.length) return null;
+  heads.forEach((h, k) => {
+    const seg = sec.slice(h.index + h[0].length, heads[k + 1]?.index ?? sec.length);
+    const count = (seg.match(PART_RE) || []).length;
+    n[h[1] === 'lokal boyali' ? 'local' : h[1] === 'boyali' ? 'painted' : 'changed'] += count;
+  });
+  return { ...n, original: false };
+}
 
 /**
  * Eklentinin detay sayfasından okuduğu bilgiyi ilan alanlarına çevirir.
@@ -126,6 +169,15 @@ export function parseDetail(d = {}) {
     }
     groups = n.changed + n.local + n.painted + n.original ? 1 : 0;
   }
+  // Grup başlıkları bulundu ama parça listeleri okunamadıysa (güncel sayfa düzeni) bölüm metninden okunur
+  let known = n.changed + n.painted + n.local + n.original > 0;
+  const fromText = !known ? parseDamageText(d.desc) : null;
+  if (fromText) {
+    Object.assign(n, fromText, { original: fromText.original ? 1 : 0 });
+    known = true;
+    groups = Math.max(groups, 1);
+  }
+  if (!known) groups = 0; // parça bilgisi yok: "boyasız/değişensiz" sanılmasın
   const bad = n.changed + n.painted + n.local;
   let summary = [n.changed && `${n.changed} değişen`, n.painted && `${n.painted} boyalı`, n.local && `${n.local} lokal boyalı`].filter(Boolean).join(', ') || null;
   if (!summary && groups && n.original) summary = 'Tamamı orjinal';
@@ -135,10 +187,12 @@ export function parseDetail(d = {}) {
 
   // Tramer: özellik listesinde varsa oradan, yoksa açıklamadan
   const tramerProp = Object.entries(props).find(([k]) => /tramer/.test(k))?.[1];
-  const tramer = tramerProp ? parseDescription(`tramer ${tramerProp}`).tramer : parseDescription(d.desc).tramer;
+  const seller = sellerText(d.desc);
+  const tramer = tramerProp ? parseDescription(`tramer ${tramerProp}`).tramer : parseDescription(seller).tramer;
 
   const kimden = fold(get('kimden') || '');
-  const num = (v) => { const x = parseNumber(v); return x && x > 0 ? x : null; };
+  // "526 - 550 HP" gibi aralıklarda ilk sayı
+  const num = (v) => { const x = parseNumber(String(v || '').split(/\s+-\s+|–/)[0]); return x && x > 0 ? x : null; };
   const specs = Object.fromEntries(Object.entries({
     drive: get('cekis') || null,
     hp: num(get('motor gucu')),
@@ -157,9 +211,8 @@ export function parseDetail(d = {}) {
     tramer,
     tramerFrom: tramer != null ? (tramerProp ? 'ilan' : 'açıklama') : null,
   }).filter(([, v]) => v != null));
-  const out = { damage, specs };
-  const desc = (d.desc || '').replace(/\s+/g, ' ').trim();
-  if (desc) out.description = desc.slice(0, 1500);
+  // Açıklama boşsa da yazılır ki önceki (hatalı okunmuş) açıklama kalmasın
+  const out = { damage, specs, description: seller.slice(0, 1500), detailV: DETAIL_V };
   if (kimden) out.sellerType = /sahibinden/.test(kimden) ? 'sahibinden' : 'galeri';
   if (/^evet/.test(fold(get('garanti') || ''))) out.warranty = 'Garantili';
   const color = get('renk');
@@ -173,12 +226,15 @@ export function parseDetail(d = {}) {
  */
 export function detailCandidates(listings, now = Date.now()) {
   const ok = (l) => l.source === 'sahibinden' && l.status === 'active' && !l.detailAt && /\/ilan\//.test(l.url || '');
+  // Eski ayrıştırıcıyla okunmuş detaylar (yeni ilanlardan sonra, en yenisi önce)
+  const stale = listings.filter((l) => l.source === 'sahibinden' && l.status === 'active' && l.detailAt && (l.detailV || 1) < DETAIL_V && /\/ilan\//.test(l.url || ''))
+    .sort((a, b) => Date.parse(b.firstSeen) - Date.parse(a.firstSeen));
   const fresh = listings.filter((l) => ok(l) && now - Date.parse(l.firstSeen) < 2 * DAY)
     .sort((a, b) => Date.parse(b.firstSeen) - Date.parse(a.firstSeen));
   const seen = new Set(fresh);
   const valuable = listings.filter((l) => ok(l) && !seen.has(l) && (['Fırsat', 'Şüpheli'].includes(l.a?.label) || (l.c?.trimAlt && l.a?.label === 'İyi fiyat')))
     .sort((a, b) => (a.a?.z ?? 0) - (b.a?.z ?? 0));
-  return [...fresh, ...valuable].map((l) => l.url);
+  return [...fresh, ...stale, ...valuable].map((l) => l.url);
 }
 
 /** Kayıt için kısa özet: "ağır hasar: Hayır · 2 boyalı · tramer 85 bin (açıklama) · açıklama 640 kr" */

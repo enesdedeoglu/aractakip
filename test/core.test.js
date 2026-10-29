@@ -685,7 +685,7 @@ test('sahibinden detayı: yeni ilanlar önce, sonra Fırsat/Şüpheli; detayı o
   const ls = [
     mk(1, { firstSeen: '2026-10-29T08:00:00Z' }), mk(2, { firstSeen: '2026-10-28T20:00:00Z' }),
     mk(3, { a: { label: 'Fırsat', z: -1.5 } }), mk(4, { a: { label: 'Şüpheli', z: -5 } }),
-    mk(5), mk(6, { firstSeen: '2026-10-29T09:00:00Z', detailAt: '2026-10-29T10:00:00Z' }),
+    mk(5), mk(6, { firstSeen: '2026-10-29T09:00:00Z', detailAt: '2026-10-29T10:00:00Z', detailV: 2 }),
     mk(7, { firstSeen: '2026-10-29T09:00:00Z', status: 'removed' }), { ...mk(8, { firstSeen: '2026-10-29T09:00:00Z' }), source: 'arabam' },
   ];
   assert.deepEqual(detailCandidates(ls, now).map((u) => u.match(/tesla-(\d+)/)[1]), ['1', '2', '4', '3']);
@@ -777,4 +777,41 @@ test('köprü: yeni eklenti sürümü gelince detay okuma durdurması ve hatalı
   await b.page({ url: 'https://www.sahibinden.com/tesla', challenge: true, caps: ['sahibindenDetail'], ev: '2.2.3' });
   assert.match(b.next(), /1348205308/, 'aynı ilan yeni sürümle tekrar denenir');
   assert.equal(b.status().extVersion, '2.2.3');
+});
+
+// Tabletteki gerçek detay sayfalarından (Ekim 2026) – açıklama kutusu, satıcı yazısı + boya/değişen + donanım listesi
+const FEATURES = '\nGüvenlik\nABS\nAEB\nÇocuk Kilidi\nİç Donanım\nKoltuklar (Soğutmalı)\nDış Donanım\nPanoramik Cam Tavan\nRömork Çeki Demiri\nMultimedya\nApple CarPlay';
+const REAL = {
+  props: { 'Araç Durumu': 'İkinci El', Marka: 'Tesla', 'İlan No': '1348549733', Seri: 'Model Y', Model: 'Premium Long Range', Yıl: '2025', KM: '18.000',
+    'Motor Gücü': '526 - 550 HP', Çekiş: 'Arkadan İtiş', Renk: 'Beyaz', 'Ağır Hasar Kayıtlı': 'Evet', Kimden: 'Sahibinden', Takas: 'Hayır' },
+  damage: [{ label: 'Orijinal', items: [] }, { label: 'Lokal Boyalı', items: [] }, { label: 'Boyalı', items: [] }, { label: 'Değişen', items: [] }],
+};
+
+test('sahibinden detayı (gerçek düzen): boya/değişen bölüm metninden, açıklama satıcı yazısından, motor gücü aralığı', () => {
+  const damaged = parseSahDetail({ ...REAL, desc: `Boyalı veya Değişen Parça\nOrijinal\nLokal Boyalı\nBoyalı\nDeğişen\nD\nD\nDeğişen Parçalar\nMotor Kaputu\nSağ Ön Çamurluk${FEATURES}` });
+  assert.equal(damaged.damage.summary, '2 değişen');
+  assert.equal(damaged.damage.changed, true);
+  assert.equal(damaged.damage.heavy, true);
+  assert.equal(damaged.description, '', 'satıcı yazısı yok: donanım listesi açıklama sayılmaz');
+  assert.equal(damaged.specs.hp, 526);
+  assert.equal(damaged.detailV, 2);
+  const clean = parseSahDetail({ ...REAL, desc: `Aracı geçen yıl aldık. Tramer ve hasar kaydı yoktur. EAP ömür boyu.\nBoyalı veya Değişen Parça\nOrijinal\nLokal Boyalı\nBoyalı\nDeğişen\nOrijinal\nAracın tüm parçaları orijinaldır. Değişen ve boyalı parçası bulunmamaktadır.${FEATURES}` });
+  assert.deepEqual([clean.damage.summary, clean.damage.original, clean.damage.painted, clean.damage.changed], ['Tamamı orjinal', true, false, false]);
+  assert.equal(clean.description, 'Aracı geçen yıl aldık. Tramer ve hasar kaydı yoktur. EAP ömür boyu.');
+  assert.equal(clean.damage.tramer, 0);
+  const mixed = parseSahDetail({ ...REAL, desc: 'Boyalı veya Değişen Parça Orijinal Lokal Boyalı Boyalı Değişen LB B Lokal Boyalı Parçalar Bagaj Kapağı Boyalı Parçalar Ön Tampon Sol Ön Kapı Güvenlik ABS' });
+  assert.equal(mixed.damage.summary, '2 boyalı, 1 lokal boyalı');
+  // Bölüm metni kesilmişse "boyasız" sanılmaz
+  const cut = parseSahDetail({ ...REAL, desc: 'Uzun satıcı yazısı' });
+  assert.equal(cut.damage.painted, undefined);
+  assert.equal(cut.damage.summary, undefined);
+  // Classify: donanım listesindeki "Römork Çeki Demiri" etiket olmaz (açıklama artık yalnızca satıcı yazısı)
+  assert.ok(!classify({ modelRaw: 'Tesla Model Y Premium Long Range', year: 2025, title: 'TESLA', description: damaged.description }).tags.includes('Çekme demiri'));
+});
+
+test('sahibinden detayı: eski ayrıştırıcıyla okunmuşlar yeni ilanlardan sonra yeniden okunur', () => {
+  const now = Date.parse('2026-10-29T12:00:00Z');
+  const mk = (id, o) => ({ key: `sahibinden:${id}`, source: 'sahibinden', status: 'active', url: `https://www.sahibinden.com/ilan/tesla-${id}/detay`, firstSeen: '2026-10-01T00:00:00Z', a: { label: 'Piyasa' }, ...o });
+  const ls = [mk(1, { detailAt: 'x' }), mk(2, { firstSeen: '2026-10-29T08:00:00Z' }), mk(3, { detailAt: 'x', detailV: 2 }), mk(4, { a: { label: 'Fırsat' } })];
+  assert.deepEqual(detailCandidates(ls, now).map((u) => u.match(/tesla-(\d+)/)[1]), ['2', '1', '4']);
 });
