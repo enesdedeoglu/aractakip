@@ -420,7 +420,7 @@ test('hasar durumuna göre fiyat: değişen/boya/tramer beklenen fiyatı düşü
   assert.equal(clean.expectedClean, undefined);
   assert.ok(db.market.damageEffects.changed < 0 && db.market.damageEffects.heavy < -0.1);
   assert.deepEqual([93, 110, 86, 40, 100, 120, 47].map(pctOf), ["%93'ü", "%110'u", "%86'sı", "%40'ı", "%100'ü", "%120'si", "%47'si"]);
-  assert.deepEqual(damageCounts({ summary: '1 değişen, 1 boyalı, 2 lokal boyalı' }), { changed: 1, painted: 1, local: 2, changedW: 1, paintW: 2, tramer: 0, serious: [] });
+  assert.deepEqual(damageCounts({ summary: '1 değişen, 1 boyalı, 2 lokal boyalı' }), { changed: 1, painted: 1, local: 2, changedW: 1, paintW: 2, tramer: 0, serious: [], groups: { 'değişen': {}, boya: {} } });
 });
 
 test('fiyat modeli: pahalı opsiyonlar beklenen fiyatı artırır ve kartta gösterilir', () => {
@@ -668,7 +668,7 @@ test('sahibinden detayı: ağır hasar alanı, boya/değişen grupları, açıkl
   assert.equal(d.sellerType, 'galeri');
   assert.equal(d.warranty, 'Garantili');
   assert.match(d.description, /^Araç hatasızdır/);
-  assert.deepEqual(damageCounts(d.damage), { changed: 0, painted: 2, local: 1, changedW: 0, paintW: 2.5, tramer: 85000, serious: [] });
+  assert.deepEqual(damageCounts(d.damage), { changed: 0, painted: 2, local: 1, changedW: 0, paintW: 2.5, tramer: 85000, serious: [], groups: { 'değişen': {}, boya: {} } });
   // Hepsi orijinal; ağır hasar "Evet"
   const o = parseSahDetail({ props: { 'Ağır Hasar Kayıtlı': 'Evet' }, damage: [{ label: 'Orijinal', items: ['Tavan'] }, { label: 'Boyalı', items: [] }] });
   assert.deepEqual([o.damage.heavy, o.damage.summary, o.damage.original], [true, 'Tamamı orjinal', true]);
@@ -872,4 +872,26 @@ test('sahibinden detayı: kalkmış ilanlar istenmez; listeye yönlenen detay te
   await b.page({ url: 'https://www.sahibinden.com/tesla-model-y', heads: [], rows: [], total: 0, caps: ['sahibindenDetail'], ev: '2.2.3' });
   assert.equal(b.next(), null, 'aynı ilan tekrar istenmez');
   assert.ok(u);
+});
+
+test('parça bazında etki: veri azken ağırlıklarda kalır, ilan biriktikçe veriye kayar', () => {
+  const mkDmg = (id, part, price) => ({ key: `arabam:9${id}`, sourceId: `9${id}`, modelRaw: 'Tesla Model Y Premium (Juniper)', year: 2025, km: 20000, price,
+    damage: { summary: `1 değişen (${part})`, changed: true, parts: [{ part, kind: 'changed' }] } });
+  const eff = (db, g) => db.market.partEffects.find((p) => p.kind === 'değişen' && p.group === g);
+  // Az veri: kaput etkisi ön bilgiye (ağırlık 2 × ölçek) yakın, aralık geniş
+  const few = market([mkDmg(1, 'Motor Kaputu', 2800000)]);
+  const k1 = eff(few, 'kaput');
+  assert.equal(k1.n, 1);
+  assert.ok(Math.abs(k1.effect - k1.prior) < 0.02, `az veri: ${k1.effect} ≈ ${k1.prior}`);
+  assert.ok(k1.high - k1.low > 0.03, 'belirsizlik geniş');
+  // Çok veri: 20 kaputu değişmiş araç piyasanın %15 altında → tahmin ön bilgiden (%-6) belirgin aşağı kayar
+  const base = market().listings['arabam:1'].a.expected;
+  const many = market(Array.from({ length: 20 }, (_, i) => mkDmg(10 + i, 'Motor Kaputu', Math.round(base * 0.85))));
+  const k2 = eff(many, 'kaput');
+  assert.equal(k2.n, 20);
+  assert.ok(k2.effect < k1.effect - 0.04, `çok veri: ${k2.effect} < ${k1.effect}`);
+  assert.ok(k2.high - k2.low < k1.high - k1.low, 'aralık daralır');
+  // Tampon grubu veri görmediği için ön bilgide kalır
+  const t = eff(many, 'tampon');
+  assert.equal(t.n, 0);
 });

@@ -47,6 +47,7 @@ export function createBridge({ onScan, needDetail, onChallenge, shared = () => (
   const detailTimes = [];   // son 24 saatte açılan sahibinden detay sayfaları
   let detailDiag = 0;       // ilk detay sayfalarında bulunanlar tanı için kayda yazılır
   let detailFails = 0;      // üst üste okunamayan detay sayfası
+  let arabamDiag = 0;       // arabam detayındaki hasar alanları (parça listesi var mı) tanı için kayda yazılır
   let detailPausedUntil = 0;
   let extVersion = null;     // eklentinin bildirdiği sürüm (eski eklenti bildirmez)
 
@@ -292,6 +293,14 @@ export function createBridge({ onScan, needDetail, onChallenge, shared = () => (
           const id = (url.match(/\/(\d+)(?:[?#].*)?$/) || [])[1];
           if (!id || !/DamageInfo|"Key":"Marka"/.test(html)) { failedDetail.add(url); return; }
           const detail = parseArabamDetail(html);
+          if (arabamDiag++ < 2) {
+            // Parça bazında boya/değişen bilgisi sayfada var mı: ilgili JSON anahtarları ve özellik adları
+            const keys = [...new Set([...html.matchAll(/"([A-Za-z]*(?:Part|Damage|Paint|Chang|Expert|Boya|Degis)[A-Za-z]*)"\s*:/gi)].map((m) => m[1]))].slice(0, 30);
+            const props = [...new Set([...html.matchAll(/"Key":"([^"]+)"/g)].map((m) => m[1]))].slice(0, 40);
+            const near = (html.match(/.{0,60}(?:Parts|Painted|Changed|Ekspertiz).{0,240}/) || [''])[0];
+            log(`arabam detay tanı: anahtarlar=${keys.join(',')} özellikler=${props.join('|')}`);
+            log(`arabam detay tanı örnek: ${near.slice(0, 300)}`);
+          }
           return onScan({ source: 'arabam', listings: [{ source: 'arabam', sourceId: id, ...detail, detailAt: new Date().toISOString() }], complete: false, mode: 'detail' });
         }
         // Yeni eklenti satırları sayfada ayrıştırıp gönderir (küçük veri); eski sürüm tüm HTML'i

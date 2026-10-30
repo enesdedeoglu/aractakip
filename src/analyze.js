@@ -57,6 +57,14 @@ export const isHeavy = (l) => l.c?.heavy === 'var' || l.damage?.heavy === true |
 // Parçanın fiyat etkisi için ağırlığı (standart kaporta parçası = 1). Kaput değişimi önden darbe, tavan değişimi
 // yapısal hasar işaretidir; alıcılar bunlarda çok daha fazla indirim ister. Tampon plastiktir ve sık değişir.
 export const PART_WEIGHT = { 'Tavan': 3, 'Motor Kaputu': 2, 'Kaput': 2, 'Bagaj Kapağı': 1.5, 'Ön Tampon': 0.3, 'Arka Tampon': 0.3 };
+// Parça bazında etki ölçümü için gruplar: her grubun etkisi = ağırlık × ortak ölçek + gruba özel sapma.
+// Sapmanın ön bilgisi 0'dır (ceza PART_DEV_WEIGHT ilan ağırlığında): veri azken ağırlıklarda kalınır,
+// ilan biriktikçe veri kendi etkisini gösterir.
+export const PART_GROUPS = ['tavan', 'kaput', 'bagaj kapağı', 'kapı/çamurluk', 'tampon'];
+const PART_GROUP = { 'Tavan': 'tavan', 'Motor Kaputu': 'kaput', 'Kaput': 'kaput', 'Bagaj Kapağı': 'bagaj kapağı', 'Ön Tampon': 'tampon', 'Arka Tampon': 'tampon' };
+const GROUP_WEIGHT = { 'tavan': 3, 'kaput': 2, 'bagaj kapağı': 1.5, 'kapı/çamurluk': 1, 'tampon': 0.3 };
+const PART_DEV_WEIGHT = 4;
+const DMG_KINDS = ['değişen', 'boya'];
 const SERIOUS = { 'Tavan': 'Tavan değişmiş – yapısal hasar işareti (takla/üstten darbe olabilir); kapsamlı ekspertiz şart',
   'Motor Kaputu': 'Motor kaputu değişmiş – önden darbe izi; ön podye, şasi, radar/kamera ve hava yastığı kontrolü yaptırın' };
 SERIOUS['Kaput'] = SERIOUS['Motor Kaputu'];
@@ -85,7 +93,14 @@ export function damageCounts(d = {}) {
   }
   const tramer = d?.tramer > 0 ? d.tramer : 0;
   const serious = parts.filter((p) => p.kind === 'changed' && SERIOUS[p.part]).map((p) => SERIOUS[p.part]);
-  return { changed, painted, local, changedW: Math.min(changedW, 8), paintW: Math.min(paintW, 8), tramer, serious: [...new Set(serious)] };
+  // Parça gruplarına göre sayılar (boya: boyalı 1, lokal boyalı 0,5)
+  const groups = { 'değişen': {}, 'boya': {} };
+  for (const p of parts) {
+    const g = PART_GROUP[p.part] || 'kapı/çamurluk';
+    const k = p.kind === 'changed' ? 'değişen' : 'boya';
+    groups[k][g] = (groups[k][g] || 0) + (p.kind === 'local' ? 0.5 : 1);
+  }
+  return { changed, painted, local, changedW: Math.min(changedW, 8), paintW: Math.min(paintW, 8), tramer, serious: [...new Set(serious)], groups };
 }
 
 function median(arr) {
@@ -95,8 +110,24 @@ function median(arr) {
   return a.length % 2 ? a[m] : (a[m - 1] + a[m]) / 2;
 }
 
-const dot = (a, b) => a.reduce((s, v, i) => s + v * b[i], 0);
-const matVec = (M, x) => M.map((row) => dot(row, x));
+function dot(a, b) {
+  let s = 0;
+  for (let i = 0; i < a.length; i++) if (a[i]) s += a[i] * b[i];
+  return s;
+}
+// Özellik vektörlerinin çoğu sıfır (her ilan yalnızca kendi model/nesil/versiyon sütunlarında 1): sıfır olmayanlarla çarp
+const nonzero = (x) => { const idx = []; for (let i = 0; i < x.length; i++) if (x[i]) idx.push(i); return idx; };
+function matVec(M, x) {
+  const idx = nonzero(x);
+  return M.map((row) => { let s = 0; for (const j of idx) s += row[j] * x[j]; return s; });
+}
+/** xᵀ M x */
+function quad(M, x) {
+  const idx = nonzero(x);
+  let s = 0;
+  for (const i of idx) for (const j of idx) s += x[i] * M[i][j] * x[j];
+  return s;
+}
 
 function invert(A) {
   // Gauss-Jordan (kısmi pivot); ridge cezası sayesinde matris her zaman tersinir
@@ -132,11 +163,13 @@ function kmImputer(rows) {
 const BASE = ['1', 'yıl', 'km', 'km²', 'ağır hasar'];
 const DMG0 = BASE.length; // hasar özelliklerinin başladığı sütun
 const OPT0 = DMG0 + DAMAGE_FEATURES.length; // opsiyonların başladığı sütun
+const PART0 = OPT0 + OPTION_FEATURES.length; // parça grubu sapmalarının başladığı sütun
+const PART_FEATURES = DMG_KINDS.flatMap((k) => PART_GROUPS.map((g) => [k, g]));
 
 function buildFeatures(rows, imputeKm) {
-  const names = [...BASE, ...DAMAGE_FEATURES.map(([n]) => n), ...OPTION_FEATURES.map(([n]) => n)];
-  const pen = [1e-6, 1e-3, 1e-3, 0.5, HEAVY_WEIGHT, ...DAMAGE_FEATURES.map(([, , w]) => w), ...OPTION_FEATURES.map(([, , , w]) => w)];
-  const prior = [0, 0, 0, 0, HEAVY_PRIOR, ...DAMAGE_FEATURES.map(([, p]) => p), ...OPTION_FEATURES.map(([, , p]) => p)];
+  const names = [...BASE, ...DAMAGE_FEATURES.map(([n]) => n), ...OPTION_FEATURES.map(([n]) => n), ...PART_FEATURES.map(([k, g]) => `${k}·${g}`)];
+  const pen = [1e-6, 1e-3, 1e-3, 0.5, HEAVY_WEIGHT, ...DAMAGE_FEATURES.map(([, , w]) => w), ...OPTION_FEATURES.map(([, , , w]) => w), ...PART_FEATURES.map(() => PART_DEV_WEIGHT)];
+  const prior = [0, 0, 0, 0, HEAVY_PRIOR, ...DAMAGE_FEATURES.map(([, p]) => p), ...OPTION_FEATURES.map(([, , p]) => p), ...PART_FEATURES.map(() => 0)];
   const index = new Map();
   for (const [lvl, key, lambda] of LEVELS) for (const r of rows) {
     const id = `${lvl}:${key(r)}`;
@@ -151,6 +184,7 @@ function buildFeatures(rows, imputeKm) {
       const dc = damageCounts(r.damage);
       x[4] = isHeavy(r) ? 1 : 0;
       x[DMG0] = dc.changedW; x[DMG0 + 1] = dc.paintW; x[DMG0 + 2] = Math.log1p(dc.tramer / 100000);
+      PART_FEATURES.forEach(([k, g], i) => { x[PART0 + i] = dc.groups[k][g] || 0; });
     }
     const tags = r.c.tags || [];
     OPTION_FEATURES.forEach(([, has], i) => { x[OPT0 + i] = has(tags) ? 1 : 0; });
@@ -256,9 +290,31 @@ export function buildMarket(listings, { newPrices = {}, year = new Date().getFul
     // Hasarın fiyata etkisi (veriden öğrenilen, ön bilgiyle): parça / 100 bin TL tramer başına
     damageEffects: { heavy: eff(4), changed: eff(DMG0), painted: eff(DMG0 + 1), tramer100k: Math.exp(m.beta[DMG0 + 2] * Math.log(2)) - 1 },
     optionEffects: Object.fromEntries(OPTION_FEATURES.map(([n], i) => [n, eff(OPT0 + i)])),
+    partEffects: partEffects(m, train, vec, sigmaAll),
     optionOf: (l) => OPTION_FEATURES.map(([n, has], i) => [n, has(l.c?.tags || []) ? eff(OPT0 + i) : 0]).filter(([, e]) => e),
     names,
   };
+}
+
+/**
+ * Parça grubu başına fiyat etkisi: ağırlık × ortak ölçek + gruba özel sapma; ~%80 belirsizlik aralığı ve
+ * grubu içeren ilan sayısıyla. n küçükse etki ön bilgiye (ağırlıklara) yakındır.
+ */
+function partEffects(m, train, vec, sigma) {
+  const counts = PART_FEATURES.map(() => 0);
+  for (const r of train) {
+    const x = vec(r);
+    PART_FEATURES.forEach((_, i) => { if (x[PART0 + i]) counts[i]++; });
+  }
+  return PART_FEATURES.map(([k, g], i) => {
+    const a = new Array(m.beta.length).fill(0);
+    a[k === 'değişen' ? DMG0 : DMG0 + 1] = GROUP_WEIGHT[g];
+    a[PART0 + i] = 1;
+    const est = dot(a, m.beta);
+    const se = sigma * Math.sqrt(Math.max(0, quad(m.Ainv, a)));
+    const r3 = (x) => Math.round(x * 1000) / 1000;
+    return { kind: k, group: g, n: counts[i], effect: r3(Math.exp(est) - 1), low: r3(Math.exp(est - Z * se) - 1), high: r3(Math.exp(est + Z * se) - 1), prior: r3(Math.exp(GROUP_WEIGHT[g] * m.beta[k === 'değişen' ? DMG0 : DMG0 + 1]) - 1) };
+  });
 }
 
 /**
@@ -271,7 +327,7 @@ export function predict(l, market, clean = false) {
   const own = [l.key, ...(l.dup?.members || [])].map((k) => market.loo.get(k)).find(Boolean);
   if (own) lp -= dot(x, own.ax) * own.k;
   // Parametre belirsizliği: modelin az bildiği (yüksek kaldıraçlı) ilanlarda aralık genişler
-  const h = Math.max(0, dot(x, matVec(market.Ainv, x)));
+  const h = Math.max(0, quad(market.Ainv, x));
   const seg = market.sigmaSeg[l.c.segment] ?? market.sigma0;
   const extra = !clean && isHeavy(l) ? market.sigmaHeavy : 0;
   const sigma = Math.sqrt(seg * seg + market.sigmaAll * market.sigmaAll * h + extra * extra);
@@ -645,6 +701,7 @@ export function marketSummary(listings, market = null, { sale = null, all = list
   const r3 = (x) => Math.round(x * 1000) / 1000;
   const damageEffects = market ? Object.fromEntries(Object.entries(market.damageEffects).map(([k, v]) => [k, r3(v)])) : undefined;
   const optionEffects = market ? Object.fromEntries(Object.entries(market.optionEffects).map(([k, v]) => [k, r3(v)])) : undefined;
+  const partEffects = market?.partEffects;
   const modelTrends = Object.fromEntries(Object.entries(trends).filter(([k]) => k.endsWith(' · Tümü')).map(([k, v]) => [k.replace(' · Tümü', ''), v]));
-  return { segments, removed30d: removed30.length, activeCount: active.length, damageEffects, optionEffects, typicalError: market ? r3(market.sigmaAll * 0.6745) : undefined, sale: sale || undefined, trends: modelTrends };
+  return { segments, removed30d: removed30.length, activeCount: active.length, damageEffects, optionEffects, partEffects, typicalError: market ? r3(market.sigmaAll * 0.6745) : undefined, sale: sale || undefined, trends: modelTrends };
 }
