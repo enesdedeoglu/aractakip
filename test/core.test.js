@@ -287,7 +287,7 @@ test('arabam: eklentinin sayfada çıkardığı küçük satırlar', () => {
 });
 
 import { buildMarket, analyzeListing, damageCounts, pctOf, saleSignal, suggestOffer, priceTrend } from '../src/analyze.js';
-import { buildAlert, matchesVersion, watchHit, subjectOf } from '../src/notify.js';
+import { buildAlert, matchesVersion, watchHit, subjectOf, emailHtml, offerText } from '../src/notify.js';
 import { recompute } from '../src/merge.js';
 
 // Sentetik piyasa: rastgelelik yok, fiyatlar versiyona ve km'ye göre belirlenir
@@ -903,4 +903,14 @@ test('sahibinden detayı: geri doldurma açıksa kalan aktif ilanlar da okunur (
   const ids = (o) => detailCandidates(ls, now, '2.2.3', '2026-10-29T12:33:00Z', o).map((u) => u.match(/tesla-(\d+)/)[1]);
   assert.deepEqual(ids(), ['1']);
   assert.deepEqual(ids({ backfill: true }), ['1', '3', '2']);
+});
+
+test('mail: önerilen teklif ayrı satırda (HTML ve düz metin), kalkan ilanda yok', () => {
+  const l = { key: 's1', status: 'active', price: 2400000, km: 20000, year: 2025, url: 'https://x/1', source: 'sahibinden',
+    c: { model: 'Model Y', generation: 'Juniper', trim: 'Standart', heavy: 'yok', tags: [], warnings: [] },
+    a: { label: 'İyi fiyat', score: 62, expected: 2450000, deviation: -0.02, offer: 2300000, advice: 'Değerlendirilebilir.', reasons: [], cautions: [] } };
+  assert.equal(offerText(l), 'Önerilen teklif ≈ 2,30 M (ilan fiyatının %4 altı)');
+  assert.equal(offerText({ ...l, status: 'removed' }), '');
+  const alert = buildAlert({ listings: { s1: l } }, { added: [], priceChanged: [{ key: 's1', from: 2500000, to: 2400000 }], removed: [], returned: ['s1'] }, { notifyPriceDrops: true });
+  assert.match(emailHtml(alert), /💬 <b>Önerilen teklif ≈ 2,30 M \(ilan fiyatının %4 altı\)<\/b>/);
 });

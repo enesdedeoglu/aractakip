@@ -81,6 +81,14 @@ export function buildAlert(db, changes, alerts) {
   return { added, prices, removed, db, watched, empty: !added.length && !prices.length && !removed.length };
 }
 
+/** "Önerilen teklif ≈ 2,28 M (ilan fiyatının %4 altı)" – kalkan ilanda gösterilmez */
+export function offerText(l) {
+  const o = l.a?.offer;
+  if (!o || l.status === 'removed' || !l.price) return '';
+  const d = o / l.price - 1;
+  return `Önerilen teklif ≈ ${fmtM(o)}${d < -0.005 ? ` (ilan fiyatının %${Math.round(-d * 100)} altı)` : ''}`;
+}
+
 function line(l) {
   return `${LABEL_EMOJI[l.a?.label] || ''} ${l.c?.model} ${l.c?.trim} ${l.year || ''} · ${l.km != null ? l.km.toLocaleString('tr-TR') + ' km' : ''} · ${tl(l.price)} (${l.a?.label}${l.a?.deviation != null ? `, ${(l.a.deviation * 100).toFixed(0)}%` : ''}) · ${SOURCE_NAMES[l.source]}`;
 }
@@ -123,7 +131,8 @@ function card(l, extra = '', db = null, watch = null) {
         <div style="margin:4px 0;font-size:18px;font-weight:bold">${tl(l.price)} ${extra}</div>
         <div style="color:#555">${[l.km != null ? l.km.toLocaleString('tr-TR') + ' km' : 'km ?', l.city, SOURCE_NAMES[l.source], l.sellerType].filter(Boolean).map(esc).join(' · ')}</div>
         <div style="margin-top:6px"><span style="background:${color};color:#fff;border-radius:10px;padding:2px 8px;font-size:12px">${esc(a.label)} · ${a.score}/100</span>
-        ${a.expected ? `<span style="color:#555;font-size:12px"> beklenen ≈ ${tl(a.expected)} (${a.deviation > 0 ? '+' : ''}${(a.deviation * 100).toFixed(1)}%)${a.expectedLow ? ` · olağan aralık ${fmtRange(a.expectedLow, a.expectedHigh)}` : ''}${a.newRatio ? ` · sıfırın ${pctOf(a.newRatio * 100)}` : ''}${a.offer ? ` · önerilen teklif ≈ ${fmtM(a.offer)}` : ''}</span>` : ''}</div>
+        ${a.expected ? `<span style="color:#555;font-size:12px"> beklenen ≈ ${tl(a.expected)} (${a.deviation > 0 ? '+' : ''}${(a.deviation * 100).toFixed(1)}%)${a.expectedLow ? ` · olağan aralık ${fmtRange(a.expectedLow, a.expectedHigh)}` : ''}${a.newRatio ? ` · sıfırın ${pctOf(a.newRatio * 100)}` : ''}</span>` : ''}</div>
+        ${offerText(l) ? `<div style="margin-top:6px;font-size:14px;color:#111">💬 <b>${esc(offerText(l))}</b></div>` : ''}
         <div style="margin-top:6px;color:#333">${esc(a.advice)}</div>
         ${(a.cautions || []).length ? `<div style="margin-top:4px;color:#b35900;font-size:12px">⚠ ${a.cautions.map(esc).join('<br>⚠ ')}</div>` : ''}
         ${(a.reasons || []).length ? `<div style="margin-top:4px;color:#0a7d32;font-size:12px">✓ ${a.reasons.slice(0, 4).map(esc).join('<br>✓ ')}</div>` : ''}
@@ -147,8 +156,9 @@ export function emailHtml(alert) {
 
 function emailText(alert) {
   const out = [];
-  if (alert.added.length) out.push('YENİ İLANLAR', ...alert.added.map((l) => `${line(l)}\n  ${l.a.advice}\n  ${l.url}`));
-  if (alert.prices.length) out.push('', 'FİYAT DEĞİŞİMLERİ', ...alert.prices.map((p) => `${tl(p.from)} → ${tl(p.to)} | ${line(p.l)}\n  ${p.l.url}`));
+  const offer = (l) => (offerText(l) ? `\n  ${offerText(l)}` : '');
+  if (alert.added.length) out.push('YENİ İLANLAR', ...alert.added.map((l) => `${line(l)}\n  ${l.a.advice}${offer(l)}\n  ${l.url}`));
+  if (alert.prices.length) out.push('', 'FİYAT DEĞİŞİMLERİ', ...alert.prices.map((p) => `${tl(p.from)} → ${tl(p.to)} | ${line(p.l)}${offer(p.l)}\n  ${p.l.url}`));
   if (alert.removed.length) out.push('', 'KALKAN İLANLAR', ...alert.removed.map((l) => `${line(l)}`));
   if (process.env.SITE_URL) out.push('', process.env.SITE_URL);
   return out.join('\n');
