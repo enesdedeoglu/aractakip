@@ -6,7 +6,7 @@ const NUM = String.raw`(\d{1,3}(?:[.,]\d{3})+|\d+(?:[.,]\d+)?)\s*(milyon|bin|k(?
 // "tramer kaydı: 85 bin", "tramer tutarı 12.500 TL", "tramer 85k"
 const AFTER = new RegExp(String.raw`tramer(?:i|li|siz)?(?:\s*(?:kaydi|kayit|tutari|bedeli|miktari|var|mevcut|toplam|olarak|:|-|=))*\s*${NUM}`, 'g');
 // "85 bin tramer", "12.500 TL'lik tramer", "85.000 tramerli"
-const BEFORE = new RegExp(String.raw`${NUM}\s*(?:'?l[iı]k\s*)?tramer`, 'g');
+const BEFORE = new RegExp(String.raw`${NUM}\s*(?:(?:tl|₺)\s*)?(?:'?l[iı]k\s*)?tramer`, 'g');
 const ZERO = /tramersiz|tramer\s*(?:kaydi\s*)?(?:yok|yoktur|bulunmamaktadir|bulunmuyor|temiz|0\b)|(?<!agir\s?)hasar\s*kaydi\s*yok/;
 
 function amount(num, unit) {

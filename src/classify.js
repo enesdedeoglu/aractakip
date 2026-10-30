@@ -173,7 +173,8 @@ export function classify(l) {
   // Sitenin kendi kategori/özellik alanları önce; başlık yalnızca bunlar yetmezse devreye girer
   const structured = `${l.modelRaw || ''} ${sp.series || ''} ${sp.trim || ''} ${sp.drive || ''}`;
   const text = `${structured} ${l.title || ''}`;
-  const model = detectModel(`${l.modelRaw || ''} ${l.title || ''}`);
+  // Liste satırında seri boş gelebiliyor ("Tesla Performance Performance"); detaydaki seri de kullanılır
+  const model = detectModel(`${l.modelRaw || ''} ${sp.series || ''} ${l.title || ''}`);
   const generation = detectGeneration(model, text, l.year, l.title);
   const ctx = { generation, year: l.year, specs: sp };
   let { trim, guessed } = trimOf(model, structured, { ...ctx, guess: false });

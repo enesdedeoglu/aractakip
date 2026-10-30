@@ -87,7 +87,7 @@ export function normalize(pages) {
 // ---------- İlan detay sayfası ----------
 const DAY = 86400000;
 // Ayrıştırıcı sürümü: eski sürümle okunmuş detaylar bir kez yeniden okunur
-export const DETAIL_V = 4;
+export const DETAIL_V = 5;
 const GROUPS = [
   ['changed', /^de[gğ]i[sş](mi[sş]|en)/],
   ['local', /^lokal/],
@@ -100,8 +100,11 @@ const GROUPS = [
 // listesini (seçili olmayanlar dahil) içeriyor. Satıcı yazısı bu bölümden önceki kısımdır.
 const DAMAGE_HEAD = /Boyal[ıi]\s+veya\s+De[ğg]i[şs]en\s+Par[çc]a/i;
 const FEATURES_HEAD = /(^|\n|\s)G[üu]venlik\s+ABS\b/;
+// Satıcı yazısı boşsa eklenti sayfadaki site metinlerini (bildirim paneli vb.) açıklama sanabiliyor
+const SITE_TEXT = /bildirimler geldiğinde|bildirimler listelenecektir|aramanızı kaydet|kayıtlı arama|favori aramalar/i;
 export function sellerText(desc) {
   let t = desc || '';
+  if (SITE_TEXT.test(t) && t.length < 300) return '';
   const i = t.search(DAMAGE_HEAD);
   if (i >= 0) t = t.slice(0, i);
   const j = t.search(FEATURES_HEAD);
@@ -129,11 +132,11 @@ export function parseDamageText(desc) {
   let sec = t.slice(i + 'boyalı veya değişen parça'.length);
   const end = sec.search(/(güvenlik abs|iç donanım|dış donanım|multimedya)/);
   if (end >= 0) sec = sec.slice(0, end);
-  if (/tüm parçaları orijinal/.test(sec)) return { changed: 0, painted: 0, local: 0, original: true };
   const n = { changed: 0, painted: 0, local: 0 };
   const parts = [];
   const heads = [...sec.matchAll(/(lokal boyalı|boyalı|değişen|değişmiş) parçalar/g)];
-  if (!heads.length) return null;
+  // Parça listesi varsa o esastır; "tüm parçaları orijinal" yalnızca liste yokken
+  if (!heads.length) return /tüm parçaları orijinal/.test(sec) ? { changed: 0, painted: 0, local: 0, original: true, raw: sec.trim().slice(0, 300) } : null;
   heads.forEach((h, k) => {
     const kind = h[1] === 'lokal boyalı' ? 'local' : h[1] === 'boyalı' ? 'painted' : 'changed';
     const seg = sec.slice(h.index + h[0].length, heads[k + 1]?.index ?? sec.length);
@@ -142,7 +145,7 @@ export function parseDamageText(desc) {
       parts.push({ part: PART_OF.get(m[1]), kind, note: m[2] ? m[2].replace(/\s*\/\s*/g, '/').trim() : undefined });
     }
   });
-  return { ...n, original: false, parts };
+  return { ...n, original: false, parts, raw: sec.trim().slice(0, 300) };
 }
 
 /**
@@ -234,6 +237,8 @@ export function parseDetail(d = {}) {
   }).filter(([, v]) => v != null));
   // Açıklama boşsa da yazılır ki önceki (hatalı okunmuş) açıklama kalmasın
   const out = { damage, specs, description: seller.slice(0, 1500), detailV: DETAIL_V };
+  // Boya/değişen bölümünün okunan metni (doğrulama için kısa)
+  if (fromText?.raw) out.damageRaw = fromText.raw;
   if (kimden) out.sellerType = /sahibinden/.test(kimden) ? 'sahibinden' : 'galeri';
   if (/^evet/.test(fold(get('garanti') || ''))) out.warranty = 'Garantili';
   const color = get('renk');
