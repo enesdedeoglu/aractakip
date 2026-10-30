@@ -248,7 +248,8 @@ export function parseDetail(d = {}) {
 
 /**
  * Detay sayfası okunacak sahibinden ilanları, öncelik sırasıyla: son 2 günde görülen yeni ilanlar (en yenisi
- * önce), sonra değerlendirmesi detaya bağlı olanlar (Fırsat / Şüpheli, versiyonu fiyatla tahmin edilen ucuzlar).
+ * önce), eski sürümle okunmuşlar, değerlendirmesi detaya bağlı olanlar (Fırsat / Şüpheli, versiyonu fiyatla
+ * tahmin edilen ucuzlar), geri doldurma açıksa kalan aktif ilanlar. Günlük sınır köprüde (bridge.js) uygulanır.
  */
 const verNum = (v) => String(v || '0').split('.').reduce((a, x) => a * 1000 + Number(x || 0), 0);
 // Satıcı yazısını ve boya/değişen bölümünü ayrı okuyan ilk eklenti sürümü
@@ -258,7 +259,7 @@ const SPLIT_EV = verNum('2.2.3');
  * @param ev şu an bağlı eklentinin sürümü: daha eski eklentiyle okunmuş detaylar yenisiyle bir kez yeniden okunur
  * @param lastFull sahibinden'in son tam taraması: onda görülmeyen ilan büyük ihtimalle kalkmıştır (adresi listeye yönlenir)
  */
-export function detailCandidates(listings, now = Date.now(), ev = null, lastFull = null) {
+export function detailCandidates(listings, now = Date.now(), ev = null, lastFull = null, { backfill = false } = {}) {
   const cut = Date.parse(lastFull) - 3600e3;
   const live = (l) => l.source === 'sahibinden' && l.status === 'active' && /\/ilan\//.test(l.url || '') && !(Date.parse(l.lastSeen) < cut);
   const ok = (l) => live(l) && !l.detailAt;
@@ -271,7 +272,11 @@ export function detailCandidates(listings, now = Date.now(), ev = null, lastFull
   const seen = new Set(fresh);
   const valuable = listings.filter((l) => ok(l) && !seen.has(l) && (['Fırsat', 'Şüpheli'].includes(l.a?.label) || (l.c?.trimAlt && l.a?.label === 'İyi fiyat')))
     .sort((a, b) => (a.a?.z ?? 0) - (b.a?.z ?? 0));
-  return [...fresh, ...stale, ...valuable].map((l) => l.url);
+  // Geri doldurma: kalan aktif ilanlar (parça bazında hasar ölçümü için veri). Model Y önce, en son görülen önce
+  const taken = new Set([...fresh, ...valuable]);
+  const rest = backfill ? listings.filter((l) => ok(l) && !taken.has(l))
+    .sort((a, b) => (b.c?.model === 'Model Y') - (a.c?.model === 'Model Y') || Date.parse(b.lastSeen) - Date.parse(a.lastSeen)) : [];
+  return [...fresh, ...stale, ...valuable, ...rest].map((l) => l.url);
 }
 
 /** Kayıt için kısa özet: "ağır hasar: Hayır · 2 boyalı · tramer 85 bin (açıklama) · açıklama 640 kr" */

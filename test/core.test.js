@@ -895,3 +895,12 @@ test('parça bazında etki: veri azken ağırlıklarda kalır, ilan biriktikçe 
   const t = eff(many, 'tampon');
   assert.equal(t.n, 0);
 });
+
+test('sahibinden detayı: geri doldurma açıksa kalan aktif ilanlar da okunur (Model Y önce)', () => {
+  const now = Date.parse('2026-10-30T12:00:00Z');
+  const mk = (id, o) => ({ key: `sahibinden:${id}`, source: 'sahibinden', status: 'active', url: `https://www.sahibinden.com/ilan/tesla-${id}/detay`, firstSeen: '2026-10-10T00:00:00Z', lastSeen: '2026-10-30T10:00:00Z', c: { model: 'Model Y' }, a: { label: 'Piyasa' }, ...o });
+  const ls = [mk(1, { firstSeen: '2026-10-30T08:00:00Z' }), mk(2, { c: { model: 'Model 3' } }), mk(3), mk(4, { detailAt: 'x', detailV: 5, detailEv: '2.2.3' })];
+  const ids = (o) => detailCandidates(ls, now, '2.2.3', '2026-10-29T12:33:00Z', o).map((u) => u.match(/tesla-(\d+)/)[1]);
+  assert.deepEqual(ids(), ['1']);
+  assert.deepEqual(ids({ backfill: true }), ['1', '3', '2']);
+});

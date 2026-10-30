@@ -18,6 +18,7 @@ Eklenti, ajandan sıradaki adresi alır ve kendi sabitlenmiş sekmesinde açar (
 saatte bir arabam, 6 saatte bir sahibinden tam tarama). Sayfalar arasında en az ~25 sn beklenir.
 sahibinden ilan detay sayfaları (Ağır Hasar Kayıtlı, çekiş, boya/değişen, açıklama) yalnızca son 2 günde gelen ilanlar ile
 Fırsat/Şüpheli ilanlar için, en sık 6 dakikada bir ve günde en fazla 80 sayfa okunur (`agent.extension.sahibindenDetail*`).
+`sahibindenDetailBackfill: true` iken kalan kapasiteyle diğer aktif ilanların detayı da okunur (parça bazında hasar ölçümü için).
 Detay okuma eklentinin 2.2.0 sürümüyle gelir; ajan eski eklentiye detay sayfası açtırmaz.
 Ayrı bir otomasyon penceresi açılmaz; sitelere senin normal tarayıcın gibi görünür.
 
@@ -146,7 +147,8 @@ STORE=fs npm run scan   # GitHub yerine yerel dosyaya yaz (geliştirme)
   (Ekim 2026: ağır hasar ≈ −%24, değişen parça başına ≈ −%3, boyalı parça ≈ −%1, 100 bin TL tramer ≈ −%2,4). Hasarlı aracın
   beklenen fiyatı buna göre düşürülür, hasarsız eşdeğeri ayrıca gösterilir. Parça adı biliniyorsa (sahibinden boya/değişen
   bölümü) parçalar ağırlıklandırılır: kaput ×2 (önden darbe izi), tavan ×3 (yapısal hasar), bagaj kapağı ×1,5, tampon ×0,3;
-  kaput veya tavan değişmişse kartta ayrıca uyarı çıkar.
+  kaput veya tavan değişmişse kartta ayrıca uyarı çıkar. Her parça grubunun etkisi ayrıca veriden ölçülür (ağırlıklar ön bilgidir;
+  ilan biriktikçe veriye kayar); piyasa sekmesinde örnek sayısı ve belirsizlik aralığıyla gösterilir.
 - **Ağır hasar:** arabam ve sahibinden detayı (Ağır Hasarlı / Ağır Hasar Kayıtlı: Evet/Hayır), sahibinden "Ağır Hasar Kayıtlı" filtreli liste ve ilan metni
   ("ağır hasar", "pert", "çekme belgeli"; Türkçe karaktersiz yazımlar dahil, "ağır hasar kaydı yok" gibi olumsuzlar hariç).
   Aynı aracın bir sitesinde (kalkmış olsa da) ya da önceki ilanında ağır hasar yazıyorsa diğer ilandaki "yok" bilgisi bunu
