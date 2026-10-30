@@ -249,6 +249,11 @@ export function createBridge({ onScan, needDetail, onChallenge, shared = () => (
       }
       if (host.endsWith('sahibinden.com') && rows) {
         const pg = { url, heads, rows };
+        if (task === 'sahibindenDetail') {
+          // Kalkmış ilanın adresi kategori listesine yönleniyor: o ilan tekrar istenmez (okuma hatası sayılmaz)
+          failedDetail.add(inflight.url);
+          log(`sahibinden detay: ilan listeye yönlendi, büyük ihtimalle kalkmış (${(inflight.url.match(/(\d{9,})\/detay/) || [])[1] || inflight.url})`);
+        }
         if (task === 'sahibindenHeavy') {
           // Ağır hasar kayıtlı ilan listesi: buradakiler "kayıtlı", tek sayfaya sığdıysa diğerleri "kaydı yok"
           done();

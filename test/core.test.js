@@ -861,3 +861,15 @@ test('sahibinden detayı: gece okumalarından çıkan düzeltmeler', () => {
   // Liste satırında seri boş, detayda "Model Y"
   assert.equal(classify({ modelRaw: 'Tesla Performance Performance', title: '2023 tesla', year: 2023, specs: { series: 'Model Y', trim: 'Performance' } }).model, 'Model Y');
 });
+
+test('sahibinden detayı: kalkmış ilanlar istenmez; listeye yönlenen detay tekrar denenmez', async () => {
+  const now = Date.parse('2026-10-30T12:00:00Z');
+  const mk = (id, lastSeen) => ({ key: `sahibinden:${id}`, source: 'sahibinden', status: 'active', url: `https://www.sahibinden.com/ilan/tesla-${id}/detay`, firstSeen: '2026-10-29T12:00:00Z', lastSeen, a: { label: 'Piyasa' } });
+  const ls = [mk(1, '2026-10-29T13:00:00Z'), mk(2, '2026-10-28T20:00:00Z')];
+  assert.deepEqual(detailCandidates(ls, now, '2.2.3', '2026-10-29T12:33:00Z').map((u) => u.match(/tesla-(\d+)/)[1]), ['1']);
+  const { b, scans } = testBridge({ caps: ['sahibindenDetail'], intervals: { sahibindenDetail: 0 } });
+  const u = b.next();
+  await b.page({ url: 'https://www.sahibinden.com/tesla-model-y', heads: [], rows: [], total: 0, caps: ['sahibindenDetail'], ev: '2.2.3' });
+  assert.equal(b.next(), null, 'aynı ilan tekrar istenmez');
+  assert.ok(u);
+});
