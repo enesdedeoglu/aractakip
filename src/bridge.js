@@ -297,9 +297,11 @@ export function createBridge({ onScan, needDetail, onChallenge, shared = () => (
             // Parça bazında boya/değişen bilgisi sayfada var mı: ilgili JSON anahtarları ve özellik adları
             const keys = [...new Set([...html.matchAll(/"([A-Za-z]*(?:Part|Damage|Paint|Chang|Expert|Boya|Degis)[A-Za-z]*)"\s*:/gi)].map((m) => m[1]))].slice(0, 30);
             const props = [...new Set([...html.matchAll(/"Key":"([^"]+)"/g)].map((m) => m[1]))].slice(0, 40);
-            const near = (html.match(/.{0,60}(?:Parts|Painted|Changed|Ekspertiz).{0,240}/) || [''])[0];
+            const at = (k, n) => { const i = html.indexOf(`"${k}"`); return i < 0 ? '-' : html.slice(i, i + n).replace(/\s+/g, ' '); };
             log(`arabam detay tanı: anahtarlar=${keys.join(',')} özellikler=${props.join('|')}`);
-            log(`arabam detay tanı örnek: ${near.slice(0, 300)}`);
+            // Parça bazında ekspertiz: içeriğinden örnek (okuyucuyu yazmak için)
+            log(`arabam detay tanı Expertise: ${at('Expertise', 400)}`);
+            log(`arabam detay tanı ExpertiseDetails: ${at('ExpertiseDetails', 900)}`);
           }
           return onScan({ source: 'arabam', listings: [{ source: 'arabam', sourceId: id, ...detail, detailAt: new Date().toISOString() }], complete: false, mode: 'detail' });
         }
