@@ -550,7 +550,7 @@ test('aynı araç: bir sitedeki ağır hasar/tramer bilgisi diğer sitedeki "yok
   assert.equal(d.original, false);
 });
 
-import { parseDetail } from '../src/sources/arabam.js';
+import { parseDetail, parseDetail as parseArabamDetail } from '../src/sources/arabam.js';
 
 test('arabam detayı: ağır hasar alanı farklı yazımlarla okunur', () => {
   const page = (k, v) => `{"Id":1,"Key":"${k}","Value":"${v}"} "DamageInfo":{"Status":2,"DamagePrice":0}`;
@@ -913,4 +913,53 @@ test('mail: önerilen teklif ayrı satırda (HTML ve düz metin), kalkan ilanda 
   assert.equal(offerText({ ...l, status: 'removed' }), '');
   const alert = buildAlert({ listings: { s1: l } }, { added: [], priceChanged: [{ key: 's1', from: 2500000, to: 2400000 }], removed: [], returned: ['s1'] }, { notifyPriceDrops: true });
   assert.match(emailHtml(alert), /💬 <b>Önerilen teklif ≈ 2,30 M \(ilan fiyatının %4 altı\)<\/b>/);
+});
+
+import { parseExpertise } from '../src/sources/arabam.js';
+
+// Tabletteki gerçek arabam detayından (Ekim 2026) biçim; durumlar örnek için değiştirildi
+const EXP = (rows) => `"Expertise":{"ExpertiseDetails":[${rows.map(([name, desc, text], i) =>
+  `{"Code":"B0${i + 1}01","Name":"${name}","Value":"1","ImagePath":null,"Order":${i},"ValueDescription":"${desc}","ValueText":"${text}","PartNumber":${i + 1}}`).join(',')}]}`;
+
+test('arabam detayı: parça bazında ekspertiz okunur, adlar ortak sözlüğe çevrilir', () => {
+  const orj = ['Orijinal', 'original'];
+  const html = `{"Id":1,"Key":"Boya-değişen","Value":"2 değişen, 1 lokal boyalı"} "DamageInfo":{"Status":2,"DamagePrice":0} ` + EXP([
+    ['Sağ Arka Çamurluk', 'Lokal Boyalı', 'local-painted'], ['Arka Kaput', 'Değişmiş', 'changed'], ['Tavan', ...orj],
+    ['Ön Kaput', 'Değişmiş', 'changed'], ['Sol Ön Kapı', 'Boyalı', 'painted'], ['Ön Tampon', ...orj]]);
+  const ex = parseExpertise(html);
+  assert.deepEqual(ex.parts.map((p) => `${p.kind}:${p.part}`), ['local:Sağ Arka Çamurluk', 'changed:Bagaj Kapağı', 'changed:Motor Kaputu', 'painted:Sol Ön Kapı']);
+  const d = parseArabamDetail(html);
+  assert.equal(d.damage.summary, '2 değişen (Bagaj Kapağı, Motor Kaputu), 1 boyalı (Sol Ön Kapı), 1 lokal boyalı (Sağ Arka Çamurluk)');
+  assert.equal(d.damage.changed, true);
+  assert.equal(d.detailV, 2);
+  const dc = damageCounts(d.damage);
+  assert.deepEqual([dc.changed, dc.changedW], [2, 3.5], 'bagaj 1,5 + kaput 2');
+  assert.match(dc.serious[0], /Motor kaputu/);
+  // Hepsi orijinal
+  const clean = parseArabamDetail(`"DamageInfo":{"Status":2,"DamagePrice":0} ` + EXP([['Tavan', ...orj], ['Arka Kaput', ...orj]]));
+  assert.deepEqual([clean.damage.summary, clean.damage.original, clean.damage.parts], ['Tamamı orjinal', true, null]);
+  // Ekspertiz yoksa eski alan kullanılır
+  assert.equal(parseArabamDetail('{"Id":1,"Key":"Boya-değişen","Value":"3 değişen"} "DamageInfo":{"Status":4,"DamagePrice":0}').damage.summary, '3 değişen');
+});
+
+test('köprü: eski arabam detayları yeni ilan yokken yavaşça yeniden okunur', () => {
+  const now = new Date().toISOString();
+  const b = createBridge({ onScan: async () => {}, needDetail: (src) => (src === 'arabamStale' ? ['https://www.arabam.com/ilan/a/b/111', 'https://www.arabam.com/ilan/a/b/222'] : []),
+    shared: () => ({ lastOk: now, lastFull: now, lastHeavy: now, lastOkRunner: 'local' }), intervals: { gap: 0, arabamRefresh: 3 } });
+  assert.match(b.next(), /111$/);
+  assert.equal(b.next(), null, 'ikinci yeniden okuma 3 dk sonra');
+});
+
+test('kalkmış ilan işareti ajan yeniden başlasa da kalır; ilan durumu değişmez', () => {
+  const db = emptyDb();
+  const base = { source: 'sahibinden', sourceId: '1348352690', title: 'TESLA', modelRaw: 'Tesla Model Y Standart', year: 2025, km: 14400, price: 2470000, url: 'https://www.sahibinden.com/ilan/tesla-1348352690/detay' };
+  mergeScans(db, [{ source: 'sahibinden', ok: true, listings: [base], runner: 'tablet' }], new Date('2026-10-30T20:00:00Z'));
+  mergeScans(db, [{ source: 'sahibinden', ok: true, mode: 'detailGone', listings: [{ source: 'sahibinden', sourceId: '1348352690' }], runner: 'tablet' }], new Date('2026-10-30T21:00:00Z'));
+  const l = db.listings['sahibinden:1348352690'];
+  assert.equal(l.status, 'active');
+  assert.equal(l.lastSeen, '2026-10-30T20:00:00.000Z', 'görülme zamanı değişmez');
+  assert.deepEqual(detailCandidates([l], Date.parse('2026-10-30T22:00:00Z')), []);
+  // Listede yeniden görülürse tekrar denenebilir
+  mergeScans(db, [{ source: 'sahibinden', ok: true, listings: [base], runner: 'tablet' }], new Date('2026-10-30T23:00:00Z'));
+  assert.equal(detailCandidates([db.listings['sahibinden:1348352690']], Date.parse('2026-10-30T23:30:00Z')).length, 1);
 });

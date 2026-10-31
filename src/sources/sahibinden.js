@@ -261,7 +261,8 @@ const SPLIT_EV = verNum('2.2.3');
  */
 export function detailCandidates(listings, now = Date.now(), ev = null, lastFull = null, { backfill = false } = {}) {
   const cut = Date.parse(lastFull) - 3600e3;
-  const live = (l) => l.source === 'sahibinden' && l.status === 'active' && /\/ilan\//.test(l.url || '') && !(Date.parse(l.lastSeen) < cut);
+  // detailGoneAt: detay adresi listeye yönlenmişti; ilan sonradan listede yeniden görülmediyse istenmez
+  const live = (l) => l.source === 'sahibinden' && l.status === 'active' && /\/ilan\//.test(l.url || '') && !(Date.parse(l.lastSeen) < cut) && !(Date.parse(l.detailGoneAt) >= Date.parse(l.lastSeen));
   const ok = (l) => live(l) && !l.detailAt;
   // Eski ayrıştırıcıyla okunmuş detaylar (yeni ilanlardan sonra, en yenisi önce)
   const outdated = (l) => (l.detailV || 1) < DETAIL_V || (verNum(ev) >= SPLIT_EV && verNum(l.detailEv) < SPLIT_EV);

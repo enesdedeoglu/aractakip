@@ -30,6 +30,7 @@ export function createBridge({ onScan, needDetail, onChallenge, shared = () => (
     borusan: 10,
     // sahibinden ilan detayı: yalnızca yeni ve değerlendirmesi detaya bağlı ilanlar, seyrek ve günlük sınırlı
     sahibindenDetail: 6, sahibindenDetailPerDay: 80,
+    arabamRefresh: 3, // eski detayların yeniden okunma aralığı (dk)
     gap: 0.75,     // iki sayfa açılışı arasındaki en kısa süre (dk)
     crawlGap: 1,   // tam taramada sayfalar arası en kısa süre (dk)
     ...intervals,
@@ -176,7 +177,12 @@ export function createBridge({ onScan, needDetail, onChallenge, shared = () => (
       pick = { task: 'sahibindenDetail', url: sahDetail };
     } else {
       if (!detailQueue.length) detailQueue = needDetail('arabam').filter(freshDetail).slice(0, 10);
-      const u = detailQueue.shift();
+      let u = detailQueue.shift();
+      // Eski ayrıştırıcıyla okunmuş arabam detayları: yeni ilan yoksa, en sık arabamRefresh dakikada bir
+      if (!u && Date.now() - (last.arabamRefresh || 0) > iv.arabamRefresh * MIN) {
+        u = needDetail('arabamStale').find(freshDetail);
+        if (u) last.arabamRefresh = Date.now();
+      }
       if (u) { requested.set(u, Date.now()); pick = { task: 'arabamDetail', url: u }; }
     }
     if (!pick) return null;
@@ -253,7 +259,10 @@ export function createBridge({ onScan, needDetail, onChallenge, shared = () => (
         if (task === 'sahibindenDetail') {
           // Kalkmış ilanın adresi kategori listesine yönleniyor: o ilan tekrar istenmez (okuma hatası sayılmaz)
           failedDetail.add(inflight.url);
-          log(`sahibinden detay: ilan listeye yönlendi, büyük ihtimalle kalkmış (${(inflight.url.match(/(\d{9,})\/detay/) || [])[1] || inflight.url})`);
+          const goneId = (inflight.url.match(/(\d{9,})\/detay/) || [])[1];
+          log(`sahibinden detay: ilan listeye yönlendi, büyük ihtimalle kalkmış (${goneId || inflight.url})`);
+          // Ajan yeniden başlasa da tekrar istenmesin diye ilana yazılır
+          if (goneId) onScan({ source: 'sahibinden', listings: [{ source: 'sahibinden', sourceId: goneId }], complete: false, mode: 'detailGone' });
         }
         if (task === 'sahibindenHeavy') {
           // Ağır hasar kayıtlı ilan listesi: buradakiler "kayıtlı", tek sayfaya sığdıysa diğerleri "kaydı yok"

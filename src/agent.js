@@ -15,6 +15,7 @@ import { loadSettings } from './settings.js';
 import { closeContext } from './browser.js';
 import { createBridge } from './bridge.js';
 import { detailCandidates as sahibindenDetailCandidates } from './sources/sahibinden.js';
+import { DETAIL_V as ARABAM_DETAIL_V } from './sources/arabam.js';
 import { openStore } from './store.js';
 import { setMailPause, DURATIONS } from './prefs.js';
 import { publishSite } from './publish.js';
@@ -87,7 +88,8 @@ const bridge = createBridge({
     }
   },
   needDetail: (source = 'arabam', ev = null) => source === 'sahibinden' ? sahibindenDetailCandidates(Object.values(latestDb?.listings || {}), Date.now(), ev, latestDb?.sources?.sahibinden?.lastFull, { backfill: loadSettings().agent.extension.sahibindenDetailBackfill }) : Object.values(latestDb?.listings || {})
-    .filter((l) => l.source === 'arabam' && l.status === 'active' && !l.detailAt)
+    // 'arabamStale': eski ayrıştırıcıyla okunmuş detaylar (parça bazında ekspertiz için yavaşça yeniden okunur)
+    .filter((l) => l.source === 'arabam' && l.status === 'active' && (source === 'arabamStale' ? l.detailAt && (l.detailV || 1) < ARABAM_DETAIL_V : !l.detailAt))
     .sort((a, b) => Date.parse(b.firstSeen) - Date.parse(a.firstSeen))
     .map((l) => l.url),
   onScan: (scan) => {

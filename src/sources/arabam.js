@@ -81,6 +81,44 @@ export async function fetchDetail(listing) {
   return parseDetail(h, listing);
 }
 
+// Ekspertiz parça adları sahibinden'deki adlarla aynı sözlüğe çevrilir (fiyat modelindeki parça ağırlıkları)
+const PART_ALIAS = { 'arka kaput': 'Bagaj Kapağı', 'bagaj kapağı': 'Bagaj Kapağı', 'ön kaput': 'Motor Kaputu', 'motor kaputu': 'Motor Kaputu', 'kaput': 'Motor Kaputu' };
+// Ayrıştırıcı sürümü: parça bazında ekspertiz eklenmeden önce okunan detaylar bir kez yeniden okunur
+export const DETAIL_V = 2;
+
+/**
+ * arabam ekspertizi: "ExpertiseDetails":[{"Name":"Sağ Arka Çamurluk","ValueDescription":"Orijinal","ValueText":"original"},…]
+ * @returns { parts: [{ part, kind }], original: n, unknown: n } | null
+ */
+export function parseExpertise(h) {
+  const i = (h || '').indexOf('"ExpertiseDetails":[');
+  if (i < 0) return null;
+  const items = [];
+  for (const m of h.slice(i, i + 20000).matchAll(/\{[^{}]*?"Name":"([^"]+)"[^{}]*?"ValueDescription":"([^"]*)"[^{}]*?"ValueText":"([^"]*)"[^{}]*\}/g)) {
+    items.push({ name: m[1], desc: m[2], text: m[3] });
+    if (items.length >= 20) break;
+  }
+  if (!items.length) return null;
+  const out = { parts: [], original: 0, unknown: 0 };
+  for (const it of items) {
+    const v = `${it.text} ${it.desc}`.toLocaleLowerCase('tr-TR');
+    const kind = /lokal|local/.test(v) ? 'local' : /boya|paint/.test(v) ? 'painted' : /değiş|degis|chang|replac/.test(v) ? 'changed' : /orij|orjin|original/.test(v) ? 'original' : 'unknown';
+    if (kind === 'original' || kind === 'unknown') { out[kind]++; continue; }
+    const lc = it.name.toLocaleLowerCase('tr-TR').trim();
+    out.parts.push({ part: PART_ALIAS[lc] || it.name.trim(), kind });
+  }
+  return out;
+}
+
+const KIND_LABEL = { changed: 'değişen', painted: 'boyalı', local: 'lokal boyalı' };
+function expertiseSummary(ex) {
+  if (!ex.parts.length) return ex.original && !ex.unknown ? 'Tamamı orjinal' : null;
+  return Object.entries(KIND_LABEL).map(([k, label]) => {
+    const ps = ex.parts.filter((p) => p.kind === k);
+    return ps.length ? `${ps.length} ${label} (${ps.map((p) => p.part).join(', ')})` : null;
+  }).filter(Boolean).join(', ');
+}
+
 /** Detay sayfası HTML'inden hasar/boya/tramer ve teknik bilgiler */
 export function parseDetail(h, listing = {}) {
   const props = {};
@@ -89,7 +127,10 @@ export function parseDetail(h, listing = {}) {
   const dmg = h.match(/"DamageInfo":\{"Status":(\d+),"DamagePrice":([\d.]+)/);
   const dmgStatus = dmg ? Number(dmg[1]) : null;
   const dmgPrice = dmg ? Math.round(Number(dmg[2])) : null;
-  const boya = props['Boya-değişen'] || null;
+  // Parça bazında ekspertiz varsa özet ondan (parça adlarıyla), yoksa ilanın "Boya-değişen" alanından
+  const ex = parseExpertise(h);
+  const exSummary = ex ? expertiseSummary(ex) : null;
+  const boya = exSummary || props['Boya-değişen'] || null;
   // "Ağır Hasarlı" / "Ağır Hasar Kayıtlı": Evet / Hayır
   const heavyKey = Object.keys(props).find((k) => /a[gğ][ıi]r\s*hasar/i.test(k));
   const heavyVal = heavyKey ? props[heavyKey].trim() : '';
@@ -105,7 +146,11 @@ export function parseDetail(h, listing = {}) {
       heavy,
       summary: boya,
       original: boya ? /tamamı orjinal/i.test(boya) : null,
+      parts: ex?.parts.length ? ex.parts : null,
+      painted: ex ? ex.parts.some((p) => p.kind !== 'changed') : undefined,
+      changed: ex ? ex.parts.some((p) => p.kind === 'changed') : undefined,
     },
+    detailV: DETAIL_V,
     specs: {
       drive: props['Çekiş'] || null,
       hp: parseNumber(props['Motor gücü']),

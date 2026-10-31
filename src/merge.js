@@ -34,6 +34,11 @@ export function mergeScans(db, scans, now = new Date()) {
       (st.blockInfo ||= {})[s.runner] = { at: t, count: s.blockCount || 1 };
     }
     if (!s.ok) continue;
+    // Detay adresi listeye yönlenen (büyük ihtimalle kalkmış) ilan: yalnızca işaretlenir, durumu değişmez
+    if (s.mode === 'detailGone') {
+      for (const raw of s.listings) { const l = db.listings[keyOf(raw)]; if (l) { l.detailGoneAt = t; changes.updated++; } }
+      continue;
+    }
     if (st.blockedUntil && Date.parse(st.blockedUntil) < now) st.blockedUntil = null;
     if (st.blocks?.[s.runner]) delete st.blocks[s.runner]; // bu cihaz siteyi yeniden tarayabildi
     st.lastOk = t;
