@@ -114,6 +114,15 @@
         <p class="hint">Her nokta bir ilan; renk tavsiye etiketini gösterir. Aynı km’de aşağıda kalan noktalar daha ucuzdur. Noktaya tıklayınca ilan açılır.</p>
       </div>
       <div class="panel">
+        <div class="panel-head">
+          <h2>Versiyon bazında fiyat trendi</h2>
+        </div>
+        <div class="trend-legend" id="trendLegend" role="group" aria-label="Gösterilen versiyonlar"></div>
+        <div id="trendChart" class="trend"></div>
+        <details class="trend-table"><summary>Tablo olarak göster</summary><div class="table-wrap" id="trendTable"></div></details>
+        <p class="hint">Her hafta yayına giren Model Y ilanlarının giriş fiyatı, yıl/km/hasar farkı ayıklanarak (bugünkü beklenen fiyata oranla) hesaplanır; çizgi ilk haftaya göre değişimi gösterir. Az ilanlı haftalar (5'ten az) çizilmez.</p>
+      </div>
+      <div class="panel">
         <h2>Segment özeti</h2>
         <div class="table-wrap"><table class="seg" id="segTable"></table></div>
         <p class="hint" id="saleInfo"></p>

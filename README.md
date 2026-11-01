@@ -160,8 +160,10 @@ STORE=fs npm run scan   # GitHub yerine yerel dosyaya yaz (geliştirme)
 - **Satış sinyali ve teklif:** kısa sürede (≤21 gün) kalkan ilanlar büyük ihtimalle satıldı; fiyatları kalkış zamanına göre
   düzeltilerek gerçekçi satış oranı (≈ ilan fiyatının %98'i) ve piyasanın aylık kayması ölçülür. Kartta "önerilen teklif",
   bu satış seviyesiyle ilan fiyatından pazarlık payı (ilanda kalma süresi ve fiyat düşüşleriyle artar) düşülmüş değerin küçüğüdür.
-- **Trend:** piyasa sekmesinde her versiyonun son 3-4 haftadaki fiyat seviyesi değişimi (yalnızca yeni yayına giren ilanların
-  giriş fiyatı, yıl/km/hasara göre düzeltilmiş).
+- **Trend:** piyasa sekmesinde versiyon bazında haftalık fiyat trendi grafiği (Model Y; yalnızca yeni yayına giren ilanların
+  giriş fiyatı, yıl/km/hasara göre düzeltilmiş, ilk haftaya göre değişim). Versiyonlar düğmelerle açılıp kapanır, tablo görünümü var.
+- **Kilometre:** km ve km² tüm versiyonlar için ortak eğri, üstüne nesle özel km eğimi; kartta aynı yıldaki tipik km'li
+  araca göre km etkisi yazar.
 - **Puan (0–100):** fiyatın aralıktaki yeri + tramer/boya/değişen/ağır hasar + satıcı tipi + km/yıl + fiyat düşüşleri + ilanda kalma süresi.
 - **Etiketler:** 🔥 Fırsat (aralığın altında; versiyon kesin, ağır hasarsız, sıfır fiyatının altında) · 👍 İyi fiyat ·
   ⚖️ Piyasa (aralıkta) · 💸 Pahalı (aralığın üstünde) · ⚠️ Şüpheli (aralığın çok altında: gizli ağır hasar, yanlış versiyon,
