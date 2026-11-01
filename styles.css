@@ -18,6 +18,9 @@
   --bad-bg: #fce6e8;
   --shadow: 0 1px 2px rgba(16, 20, 30, .06), 0 4px 16px rgba(16, 20, 30, .05);
   --radius: 14px;
+  /* Grafik serileri (doğrulanmış sıra: mavi, turuncu, su yeşili, sarı, pembe, yeşil) */
+  --series-1: #2a78d6; --series-2: #eb6834; --series-3: #1baf7a;
+  --series-4: #eda100; --series-5: #e87ba4; --series-6: #008300;
   color-scheme: light;
 }
 @media (prefers-color-scheme: dark) {
@@ -38,6 +41,8 @@
     --bad: #ff6b78;
     --bad-bg: #3a161b;
     --shadow: 0 1px 2px rgba(0, 0, 0, .3), 0 6px 20px rgba(0, 0, 0, .25);
+    --series-1: #3987e5; --series-2: #d95926; --series-3: #199e70;
+    --series-4: #c98500; --series-5: #d55181; --series-6: #008300;
     color-scheme: dark;
   }
 }
@@ -339,3 +344,22 @@ ol.steps { margin: 8px 0 0; padding-left: 20px; display: flex; flex-direction: c
 .desc { font-size: 12px; color: var(--muted); margin-top: 6px; }
 .desc summary { cursor: pointer; }
 .desc p { margin: 4px 0 0; white-space: pre-line; max-height: 12em; overflow: auto; }
+
+/* Versiyon bazında fiyat trendi */
+.trend-legend { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 8px; }
+.trend-legend button { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--border); background: var(--surface); color: var(--text);
+  border-radius: 999px; padding: 4px 10px; font: inherit; font-size: 12px; cursor: pointer; }
+.trend-legend button[aria-pressed="false"] { color: var(--muted); opacity: .6; }
+.trend-legend i { width: 14px; height: 2px; border-radius: 1px; display: inline-block; }
+.trend { position: relative; }
+.trend svg { width: 100%; height: auto; display: block; overflow: visible; }
+.trend text { fill: var(--muted); font-size: 11px; }
+.trend .lbl { fill: var(--text); font-size: 11px; }
+.trend .grid-line { stroke: var(--border); }
+.trend .zero { stroke: var(--muted); stroke-dasharray: 3 3; }
+.trend .xhair { stroke: var(--muted); stroke-width: 1; }
+.trend .tip { position: absolute; pointer-events: none; background: var(--surface); color: var(--text); border: 1px solid var(--border);
+  box-shadow: var(--shadow); border-radius: 8px; padding: 6px 8px; font-size: 12px; white-space: nowrap; z-index: 2; }
+.trend .tip i { width: 12px; height: 2px; display: inline-block; vertical-align: middle; margin-right: 6px; }
+.trend .tip small { color: var(--muted); }
+.trend-table summary { cursor: pointer; color: var(--muted); font-size: 12px; margin-top: 6px; }

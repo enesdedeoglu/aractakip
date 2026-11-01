@@ -465,7 +465,94 @@
   // ---------- Piyasa sekmesi ----------
   const LABEL_COLORS = { 'Fırsat': 'var(--good)', 'İyi fiyat': 'var(--info)', 'Piyasa': 'var(--muted)', 'Pahalı': 'var(--warn)', 'Şüpheli': 'var(--bad)', 'Veri az': 'var(--border)' };
 
+  // ---------- Versiyon bazında fiyat trendi ----------
+  // Renk versiyona sabit bağlı (sıralamaya göre değil): filtre değişse de aynı versiyon aynı renkte kalır
+  const TREND_SERIES = [
+    ['Model Y · Juniper · Long Range AWD', 'Juniper LR AWD'], ['Model Y · Juniper · Premium', 'Juniper Premium'],
+    ['Model Y · Legacy · Long Range AWD', 'Legacy LR AWD'], ['Model Y · Legacy · Standart RWD', 'Legacy RWD'],
+    ['Model Y · Legacy · Performance', 'Legacy Perf.'], ['Model Y · Juniper · Standart', 'Juniper Standart'],
+  ];
+  const trendOn = new Set(TREND_SERIES.slice(0, 4).map(([k]) => k));
+  const dayFmt = new Intl.DateTimeFormat('tr-TR', { day: 'numeric', month: 'short' });
+
+  function trendData() {
+    const segs = new Map((state.db.market?.segments || []).map((s) => [`${s.model} · ${s.generation} · ${s.trim}`, s]));
+    const now = Date.parse(state.db.updatedAt || state.db.savedAt) || Date.now();
+    return TREND_SERIES.map(([key, name], i) => {
+      const weeks = segs.get(key)?.trend?.weeks || [];
+      const ok = weeks.filter((w) => w.idx != null && w.n >= 5);
+      const base = ok[0];
+      return {
+        key, name, color: `var(--series-${i + 1})`,
+        pts: base ? ok.map((w) => ({ t: now - w.w * 7 * DAY, v: Math.exp(w.idx - base.idx) - 1, n: w.n, w: w.w })) : [],
+      };
+    }).filter((s) => s.pts.length >= 2);
+  }
+
+  function renderTrend() {
+    const series = trendData();
+    const legend = $('#trendLegend');
+    if (!series.length) { legend.innerHTML = ''; $('#trendChart').innerHTML = '<p class="hint">Trend için henüz yeterli hafta yok.</p>'; $('#trendTable').innerHTML = ''; return; }
+    legend.innerHTML = series.map((s) => `<button type="button" data-k="${esc(s.key)}" aria-pressed="${trendOn.has(s.key)}"><i style="background:${s.color}"></i>${esc(s.name)}</button>`).join('');
+    legend.querySelectorAll('button').forEach((b) => b.addEventListener('click', () => {
+      const k = b.dataset.k;
+      if (trendOn.has(k)) { if (trendOn.size > 1) trendOn.delete(k); } else trendOn.add(k);
+      renderTrend();
+    }));
+    const shown = series.filter((s) => trendOn.has(s.key));
+    // Kutunun gerçek genişliğinde çizilir (yazılar her ekranda aynı boyda); dar ekranda çizgi sonu etiketleri yerine
+    // düğmeler, ipucu ve tablo kalır
+    const W = Math.max(300, Math.round($('#trendChart').clientWidth || 760)), wide = W >= 560;
+    const H = wide ? 280 : 220, P = { l: 44, r: wide ? 190 : 12, t: 14, b: 26 };
+    const ts = [...new Set(series.flatMap((s) => s.pts.map((p) => p.t)))].sort((a, b) => a - b);
+    const vs = shown.flatMap((s) => s.pts.map((p) => p.v)).concat(0);
+    let lo = Math.min(...vs), hi = Math.max(...vs);
+    const pad = Math.max(0.005, (hi - lo) * 0.12); lo -= pad; hi += pad;
+    const X = (t) => P.l + (ts.length > 1 ? ((t - ts[0]) / (ts[ts.length - 1] - ts[0])) : 0.5) * (W - P.l - P.r);
+    const Y = (v) => P.t + (1 - (v - lo) / (hi - lo)) * (H - P.t - P.b);
+    const step = (hi - lo) > 0.08 ? 0.02 : 0.01;
+    const ticks = []; for (let v = Math.ceil(lo / step) * step; v <= hi + 1e-9; v += step) ticks.push(v);
+    // Çizgi sonu etiketleri: üst üste binmesin diye en az 13 px aralıkla
+    const ends = shown.map((s) => ({ s, y: Y(s.pts[s.pts.length - 1].v) })).sort((a, b) => a.y - b.y);
+    for (let i = 1; i < ends.length; i++) if (ends[i].y - ends[i - 1].y < 13) ends[i].y = ends[i - 1].y + 13;
+    const path = (s) => s.pts.map((p, i) => `${i ? 'L' : 'M'}${X(p.t).toFixed(1)},${Y(p.v).toFixed(1)}`).join('');
+    $('#trendChart').innerHTML = `<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img" aria-label="Versiyon bazında fiyat trendi">
+      ${ticks.map((v) => `<line class="grid-line" x1="${P.l}" x2="${W - P.r}" y1="${Y(v)}" y2="${Y(v)}"/><text x="${P.l - 6}" y="${Y(v) + 4}" text-anchor="end">${pctSigned(v, 0)}</text>`).join('')}
+      <line class="zero" x1="${P.l}" x2="${W - P.r}" y1="${Y(0)}" y2="${Y(0)}"/>
+      ${ts.map((t, i) => `<text x="${X(t)}" y="${H - 8}" text-anchor="${i === 0 ? 'start' : i === ts.length - 1 && !wide ? 'end' : 'middle'}">${dayFmt.format(t)}</text>`).join('')}
+      ${shown.map((s) => `<path d="${path(s)}" fill="none" stroke="${s.color}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+        ${s.pts.map((p) => `<circle cx="${X(p.t)}" cy="${Y(p.v)}" r="4" fill="${s.color}" stroke="var(--surface)" stroke-width="2"/>`).join('')}`).join('')}
+      ${wide ? ends.map(({ s, y }) => `<text class="lbl" x="${W - P.r + 8}" y="${y + 4}">${esc(s.name)} ${pctSigned(s.pts[s.pts.length - 1].v)}</text>`).join('') : ''}
+      <line class="xhair" x1="0" x2="0" y1="${P.t}" y2="${H - P.b}" visibility="hidden"/>
+      <rect class="hit" x="${P.l}" y="${P.t}" width="${W - P.l - P.r}" height="${H - P.t - P.b}" fill="transparent"/>
+    </svg><div class="tip" hidden></div>`;
+    // Artı imleç: en yakın haftaya oturur, görünen versiyonların değerini gösterir
+    const svg = $('#trendChart svg'), tip = $('#trendChart .tip'), xh = svg.querySelector('.xhair');
+    const move = (ev) => {
+      const r = svg.getBoundingClientRect();
+      const sx = ((ev.clientX - r.left) / r.width) * W;
+      const t = ts.reduce((a, b) => (Math.abs(X(b) - sx) < Math.abs(X(a) - sx) ? b : a));
+      xh.setAttribute('x1', X(t)); xh.setAttribute('x2', X(t)); xh.setAttribute('visibility', 'visible');
+      const rows = shown.map((s) => ({ s, p: s.pts.find((p) => p.t === t) })).filter((x) => x.p).sort((a, b) => b.p.v - a.p.v);
+      tip.innerHTML = `<b>${dayFmt.format(t)} haftası</b><br>${rows.map(({ s, p }) => `<i style="background:${s.color}"></i>${esc(s.name)}: ${pctSigned(p.v)} <small>(${p.n} ilan)</small>`).join('<br>') || '<small>veri yok</small>'}`;
+      tip.hidden = false;
+      const px = (X(t) / W) * r.width;
+      tip.style.left = `${Math.min(px + 12, r.width - tip.offsetWidth - 4)}px`;
+      tip.style.top = '8px';
+    };
+    svg.querySelector('.hit').addEventListener('pointermove', move);
+    svg.addEventListener('pointerleave', () => { tip.hidden = true; xh.setAttribute('visibility', 'hidden'); });
+    // Tablo görünümü (renk körlüğü / ekran okuyucu için)
+    $('#trendTable').innerHTML = `<table class="seg"><thead><tr><th>Hafta</th>${series.map((s) => `<th class="num">${esc(s.name)}</th>`).join('')}</tr></thead><tbody>${ts.map((t) =>
+      `<tr><td>${dayFmt.format(t)}</td>${series.map((s) => { const p = s.pts.find((q) => q.t === t); return `<td class="num">${p ? `${pctSigned(p.v)} <small>(${p.n})</small>` : '—'}</td>`; }).join('')}</tr>`).join('')}</tbody></table>`;
+  }
+
+  // Sekme gizliyken genişlik 0 olur; kutu görünür olunca ya da boyutu değişince yeniden çizilir
+  let trendW = 0;
+  if (window.ResizeObserver) new ResizeObserver(([e]) => { const w = e.contentRect.width; if (w && Math.abs(w - trendW) > 40 && state.db) { trendW = w; renderTrend(); } }).observe($('#trendChart'));
+
   function renderMarket() {
+    renderTrend();
     const active = state.listings.filter((l) => l.status === 'active' && l.price && isPrimary(l));
     const sel = $('#scatterModel');
     const models = MODEL_ORDER.filter((m) => active.some((l) => l.c.model === m));
