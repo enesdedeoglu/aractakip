@@ -157,10 +157,16 @@ function kmImputer(rows) {
     byYear.get(r.year).push(r.km);
   }
   const med = new Map([...byYear].map(([y, a]) => [y, median(a)]));
-  return (r) => r.km ?? med.get(r.year) ?? Math.max(5000, (new Date().getFullYear() - (r.year || 2022) + 0.5) * 18000);
+  const typical = (year) => med.get(year) ?? Math.max(5000, (new Date().getFullYear() - (year || 2022) + 0.5) * 18000);
+  const impute = (r) => r.km ?? typical(r.year);
+  impute.typical = typical;
+  return impute;
 }
 
 const BASE = ['1', 'yıl', 'km', 'km²', 'ağır hasar'];
+const KM_LEVEL = (r) => `${r.c.model}|${r.c.generation}`;
+// Nesle özel km eğiminin cezası: 2 ilan ağırlığı (Kasım 2026 verisinde hata %2,64 → %2,59, RMSE %5,8 → %5,5)
+const KM_GEN_WEIGHT = 2;
 const DMG0 = BASE.length; // hasar özelliklerinin başladığı sütun
 const OPT0 = DMG0 + DAMAGE_FEATURES.length; // opsiyonların başladığı sütun
 const PART0 = OPT0 + OPTION_FEATURES.length; // parça grubu sapmalarının başladığı sütun
@@ -174,6 +180,11 @@ function buildFeatures(rows, imputeKm) {
   for (const [lvl, key, lambda] of LEVELS) for (const r of rows) {
     const id = `${lvl}:${key(r)}`;
     if (!index.has(id)) { index.set(id, names.length); names.push(id); pen.push(lambda); prior.push(0); }
+  }
+  // Nesle özel km eğimi (ortak eğriden sapma, ön bilgi 0): ör. düşük km'li Legacy'ler ortak eğrinin üstünde
+  for (const r of rows) {
+    const id = `km×nesil:${KM_LEVEL(r)}`;
+    if (!index.has(id)) { index.set(id, names.length); names.push(id); pen.push(KM_GEN_WEIGHT); prior.push(0); }
   }
   /** @param clean hasarsız eşdeğer: ağır hasar, boya, değişen ve tramer yok sayılır */
   const vec = (r, clean = false) => {
@@ -192,6 +203,8 @@ function buildFeatures(rows, imputeKm) {
       const i = index.get(`${lvl}:${key(r)}`);
       if (i != null) x[i] = 1;
     }
+    const ki = index.get(`km×nesil:${KM_LEVEL(r)}`);
+    if (ki != null) x[ki] = km;
     return x;
   };
   return { names, pen, prior, vec };
@@ -284,7 +297,7 @@ export function buildMarket(listings, { newPrices = {}, year = new Date().getFul
   for (const r of train) segCounts[r.c.segment] = (segCounts[r.c.segment] || 0) + 1;
   const eff = (i) => Math.exp(m.beta[i]) - 1;
   return {
-    beta: m.beta, Ainv: m.Ainv, vec, loo, n: train.length, kmKnown: known.length, modelCounts, segCounts,
+    beta: m.beta, Ainv: m.Ainv, vec, loo, n: train.length, kmKnown: known.length, modelCounts, segCounts, typicalKm: imputeKm.typical,
     sigmaAll, sigma0, sigmaSeg, sigmaHeavy, newPrices: table, year,
     heavyEffect: eff(4),
     // Hasarın fiyata etkisi (veriden öğrenilen, ön bilgiyle): parça / 100 bin TL tramer başına
@@ -554,6 +567,16 @@ export function analyzeListing(l, market, all, { sale = null } = {}) {
     else if (perYear > 35000) { score -= 4; cautions.push(`Yoğun kullanım (~${Math.round(perYear / 1000)} bin km/yıl) – batarya sağlığını (SOH) test ettirin`); }
   }
   if (l.km == null) cautions.push('Km bilgisi yok – fiyat tahmini yaklaşık');
+  // Km'nin fiyata etkisi: aynı yıldaki tipik km'li eşdeğer araca göre
+  let kmEffect = null, typicalKm = null;
+  if (pred && l.km != null && market.typicalKm) {
+    typicalKm = Math.round(market.typicalKm(l.year) / 1000) * 1000;
+    kmEffect = expected / predict({ ...l, km: typicalKm }, market).expected - 1;
+    if (Math.abs(kmEffect) >= 0.01) {
+      const txt = `Km etkisi: aynı yıldaki tipik araca (≈ ${Math.round(typicalKm / 1000)} bin km) göre beklenen fiyat %${NF1.format(Math.abs(kmEffect * 100))} ${kmEffect > 0 ? 'yüksek' : 'düşük'}`;
+      (kmEffect > 0 ? reasons : cautions).push(txt);
+    }
+  }
   if (l.km > 150000) cautions.push('150 bin km üzeri – batarya/drive unit garanti süresini kontrol edin (8 yıl / 192 bin km)');
 
   // Fiyat hareketleri ve ilanda kalma süresi
@@ -660,6 +683,8 @@ export function analyzeListing(l, market, all, { sale = null } = {}) {
     daysOnMarket: daysOn,
     offer: offer?.offer,
     offerBasis: offer?.basis,
+    kmEffect: kmEffect != null ? Math.round(kmEffect * 1000) / 1000 : undefined,
+    typicalKm: typicalKm ?? undefined,
   };
 }
 

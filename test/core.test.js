@@ -963,3 +963,13 @@ test('kalkmış ilan işareti ajan yeniden başlasa da kalır; ilan durumu deği
   mergeScans(db, [{ source: 'sahibinden', ok: true, listings: [base], runner: 'tablet' }], new Date('2026-10-30T23:00:00Z'));
   assert.equal(detailCandidates([db.listings['sahibinden:1348352690']], Date.parse('2026-10-30T23:30:00Z')).length, 1);
 });
+
+test('kilometre: yüksek km beklenen fiyatı düşürür, kartta tipik araca göre etkisi yazar', () => {
+  const mk = (id, km) => ({ key: `sahibinden:8${id}`, sourceId: `8${id}`, modelRaw: 'Tesla Model Y Long Range (Legacy)', year: 2023, km, price: 2250000 });
+  const db = market([mk(1, 5000), mk(2, 120000)]);
+  const low = db.listings['sahibinden:81'].a, high = db.listings['sahibinden:82'].a;
+  assert.ok(low.expected > high.expected * 1.05, `${low.expected} > ${high.expected}`);
+  assert.ok(low.kmEffect > 0.01 && high.kmEffect < -0.01, `${low.kmEffect} / ${high.kmEffect}`);
+  assert.ok(low.reasons.some((r) => /^Km etkisi: aynı yıldaki tipik araca \(≈ \d+ bin km\) göre beklenen fiyat %[\d,]+ yüksek$/.test(r)));
+  assert.ok(high.cautions.some((r) => /Km etkisi: .* düşük$/.test(r)));
+});
