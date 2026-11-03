@@ -933,7 +933,7 @@ test('arabam detayı: parça bazında ekspertiz okunur, adlar ortak sözlüğe �
   assert.equal(d.damage.changed, true);
   assert.equal(d.detailV, 2);
   const dc = damageCounts(d.damage);
-  assert.deepEqual([dc.changed, dc.changedW], [2, 3.5], 'bagaj 1,5 + kaput 2');
+  assert.deepEqual([dc.changed, dc.changedW], [2, 3], 'bagaj 1 + kaput 2');
   assert.match(dc.serious[0], /Motor kaputu/);
   // Hepsi orijinal
   const clean = parseArabamDetail(`"DamageInfo":{"Status":2,"DamagePrice":0} ` + EXP([['Tavan', ...orj], ['Arka Kaput', ...orj]]));
@@ -972,4 +972,13 @@ test('kilometre: yüksek km beklenen fiyatı düşürür, kartta tipik araca gö
   assert.ok(low.kmEffect > 0.01 && high.kmEffect < -0.01, `${low.kmEffect} / ${high.kmEffect}`);
   assert.ok(low.reasons.some((r) => /^Km etkisi: aynı yıldaki tipik araca \(≈ \d+ bin km\) göre beklenen fiyat %[\d,]+ yüksek$/.test(r)));
   assert.ok(high.cautions.some((r) => /Km etkisi: .* düşük$/.test(r)));
+});
+
+test('ağır hasarlı araçta parça etkisi ayrıca sayılmaz (ağır hasar indirimi içeriyor)', () => {
+  const dmg = { summary: '2 değişen (Motor Kaputu, Sağ Ön Çamurluk)', changed: true, parts: [{ part: 'Motor Kaputu', kind: 'changed' }, { part: 'Sağ Ön Çamurluk', kind: 'changed' }] };
+  const mk = (id, o) => ({ key: `arabam:6${id}`, sourceId: `6${id}`, modelRaw: 'Tesla Model Y Premium (Juniper)', year: 2025, km: 20000, price: 2200000, ...o });
+  const db = market([mk(1, { title: 'AGIR HASAR KAYITLI', damage: { heavy: true } }), mk(2, { title: 'AGIR HASAR KAYITLI', damage: { heavy: true, ...dmg } })]);
+  const plain = db.listings['arabam:61'].a, withParts = db.listings['arabam:62'].a;
+  assert.equal(withParts.expected, plain.expected, 'parçalar ağır hasarlıda beklenen fiyatı ayrıca düşürmez');
+  assert.ok(withParts.cautions.some((c) => /Motor kaputu değişmiş/.test(c)), 'uyarı yine çıkar');
 });

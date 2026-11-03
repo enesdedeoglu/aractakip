@@ -56,14 +56,18 @@ export const isHeavy = (l) => l.c?.heavy === 'var' || l.damage?.heavy === true |
 
 // Parçanın fiyat etkisi için ağırlığı (standart kaporta parçası = 1). Kaput değişimi önden darbe, tavan değişimi
 // yapısal hasar işaretidir; alıcılar bunlarda çok daha fazla indirim ister. Tampon plastiktir ve sık değişir.
-export const PART_WEIGHT = { 'Tavan': 3, 'Motor Kaputu': 2, 'Kaput': 2, 'Bagaj Kapağı': 1.5, 'Ön Tampon': 0.3, 'Arka Tampon': 0.3 };
+// Bagaj kapağı 1,5 → 1: Kasım 2026 verisinde (ağır hasarsız) boyalıda ×0,5 (14 ilan), değişende ×1,0 (5 ilan) ölçüldü
+export const PART_WEIGHT = { 'Tavan': 3, 'Motor Kaputu': 2, 'Kaput': 2, 'Bagaj Kapağı': 1, 'Ön Tampon': 0.3, 'Arka Tampon': 0.3 };
 // Parça bazında etki ölçümü için gruplar: her grubun etkisi = ağırlık × ortak ölçek + gruba özel sapma.
 // Sapmanın ön bilgisi 0'dır (ceza PART_DEV_WEIGHT ilan ağırlığında): veri azken ağırlıklarda kalınır,
 // ilan biriktikçe veri kendi etkisini gösterir.
 export const PART_GROUPS = ['tavan', 'kaput', 'bagaj kapağı', 'kapı/çamurluk', 'tampon'];
 const PART_GROUP = { 'Tavan': 'tavan', 'Motor Kaputu': 'kaput', 'Kaput': 'kaput', 'Bagaj Kapağı': 'bagaj kapağı', 'Ön Tampon': 'tampon', 'Arka Tampon': 'tampon' };
-const GROUP_WEIGHT = { 'tavan': 3, 'kaput': 2, 'bagaj kapağı': 1.5, 'kapı/çamurluk': 1, 'tampon': 0.3 };
+const GROUP_WEIGHT = { 'tavan': 3, 'kaput': 2, 'bagaj kapağı': 1, 'kapı/çamurluk': 1, 'tampon': 0.3 };
 const PART_DEV_WEIGHT = 4;
+// Ağır hasarlı araçta parça etkisi ayrıca sayılmaz: ağır hasar indirimi değişen parçaları zaten içeriyor (Kasım 2026:
+// sayılınca ağır hasarlıların tipik hatası %4,9 / sapma +%2,7; sayılmayınca %3,7 / %0)
+const HEAVY_PART_SCALE = 0;
 const DMG_KINDS = ['değişen', 'boya'];
 const SERIOUS = { 'Tavan': 'Tavan değişmiş – yapısal hasar işareti (takla/üstten darbe olabilir); kapsamlı ekspertiz şart',
   'Motor Kaputu': 'Motor kaputu değişmiş – önden darbe izi; ön podye, şasi, radar/kamera ve hava yastığı kontrolü yaptırın' };
@@ -193,9 +197,11 @@ function buildFeatures(rows, imputeKm) {
     x[0] = 1; x[1] = (r.year ?? 2022) - 2023; x[2] = km; x[3] = km * km;
     if (!clean) {
       const dc = damageCounts(r.damage);
-      x[4] = isHeavy(r) ? 1 : 0;
-      x[DMG0] = dc.changedW; x[DMG0 + 1] = dc.paintW; x[DMG0 + 2] = Math.log1p(dc.tramer / 100000);
-      PART_FEATURES.forEach(([k, g], i) => { x[PART0 + i] = dc.groups[k][g] || 0; });
+      const hv = isHeavy(r);
+      x[4] = hv ? 1 : 0;
+      const f = hv ? HEAVY_PART_SCALE : 1;
+      x[DMG0] = dc.changedW * f; x[DMG0 + 1] = dc.paintW * f; x[DMG0 + 2] = Math.log1p(dc.tramer / 100000);
+      PART_FEATURES.forEach(([k, g], i) => { x[PART0 + i] = (dc.groups[k][g] || 0) * f; });
     }
     const tags = r.c.tags || [];
     OPTION_FEATURES.forEach(([, has], i) => { x[OPT0 + i] = has(tags) ? 1 : 0; });
